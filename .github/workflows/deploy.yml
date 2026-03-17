@@ -10,6 +10,9 @@ permissions:
   id-token: write   # Required for OIDC token request
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy:
     name: Package and Deploy Lambda
