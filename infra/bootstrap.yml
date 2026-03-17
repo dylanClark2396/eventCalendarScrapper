@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Event Calendar Scraper.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: GitHub username or organisation that owns the repository.
+
+  GitHubRepo:
+    Type: String
+    Default: eventCalendarScrapper
+    Description: Repository name (without the org prefix).
+
+  OIDCProviderArn:
+    Type: String
+    Description: >
+      ARN of the existing GitHub OIDC provider in this account.
+      Find it in IAM → Identity providers, e.g.
+      arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com
+
+Resources:
+
+  # ------------------------------------------------------------------
+  # S3 bucket — Lambda deployment artifacts (zip files)
+  # ------------------------------------------------------------------
+  DeployBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "event-calendar-scraper-deploy-${AWS::AccountId}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+
+  # ------------------------------------------------------------------
+  # GitHub Actions deploy role — least privilege
+  # ------------------------------------------------------------------
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: event-calendar-scraper-github-deploy-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref OIDCProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
+      Policies:
+        - PolicyName: DeployPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+
+              # Upload Lambda zip to the deploy bucket
+              - Sid: S3DeployArtifacts
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::event-calendar-scraper-deploy-${AWS::AccountId}/scraper.zip"
+
+              # Deploy / update the main application CloudFormation stack
+              - Sid: CloudFormationMainStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:GetTemplate
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DeleteChangeSet
+                Resource:
+                  - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/event-calendar-scraper/*"
+                  - !Sub "arn:aws:cloudformation:${AWS::Region}:aws:transform/*"
+
+              # CloudFormation creates/updates/deletes the Lambda execution role
+              - Sid: IAMLambdaRole
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/event-calendar-scraper-lambda-role"
+
+              # PassRole so CloudFormation can assign the execution role to the Lambda
+              - Sid: PassLambdaRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/event-calendar-scraper-lambda-role"
+
+              # CloudFormation creates/updates/deletes the Lambda function;
+              # GitHub Actions also calls UpdateFunctionCode directly.
+              - Sid: LambdaFunction
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:ListTags
+                  - lambda:TagResource
+                  - lambda:UntagResource
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:event-calendar-scraper"
+
+              # CloudFormation creates/manages the shared snapshot S3 bucket
+              - Sid: S3SnapshotBucket
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucket
+                  - s3:GetBucketPolicy
+                  - s3:PutBucketPolicy
+                  - s3:DeleteBucketPolicy
+                  - s3:GetBucketVersioning
+                  - s3:PutBucketVersioning
+                  - s3:GetBucketTagging
+                  - s3:PutBucketTagging
+                  - s3:GetEncryptionConfiguration
+                  - s3:PutEncryptionConfiguration
+                  - s3:GetLifecycleConfiguration
+                  - s3:PutLifecycleConfiguration
+                Resource:
+                  - !Sub "arn:aws:s3:::event-calendar-scraper-snapshots-${AWS::AccountId}"
+
+              # CloudFormation creates/manages the EventBridge schedule rule
+              - Sid: EventBridgeSchedule
+                Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:DeleteRule
+                  - events:DescribeRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                  - events:ListTargetsByRule
+                  - events:TagResource
+                  - events:UntagResource
+                Resource:
+                  - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/event-calendar-scraper-daily"
+
+Outputs:
+  DeployBucketName:
+    Description: S3 bucket for Lambda deployment artifacts — add this as the DEPLOY_BUCKET secret
+    Value: !Ref DeployBucket
+
+  GitHubDeployRoleArn:
+    Description: IAM role GitHub Actions will assume — add this as the AWS_DEPLOY_ROLE secret
+    Value: !GetAtt GitHubDeployRole.Arn

@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Event Calendar Scraper — application stack.
+  Creates the shared S3 snapshot bucket, Lambda execution role, Lambda function,
+  and an EventBridge rule that triggers all scrapers daily.
+  Each calendar's snapshot is stored at s3://<bucket>/<calendar_id>/events_snapshot.json.
+
+  Deployed automatically by GitHub Actions (see .github/workflows/deploy.yml).
+
+Parameters:
+  DeployBucket:
+    Type: String
+    Description: S3 bucket where the Lambda zip was uploaded (created by bootstrap stack).
+
+  ScheduleExpression:
+    Type: String
+    Default: "rate(1 day)"
+    Description: >
+      EventBridge schedule expression. Default is once per day.
+      Use cron syntax for a specific time, e.g. "cron(0 9 * * ? *)" for 9 AM UTC daily.
+
+Resources:
+
+  # ------------------------------------------------------------------
+  # S3 bucket — shared snapshot storage, one folder per calendar
+  # ------------------------------------------------------------------
+  SnapshotBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "event-calendar-scraper-snapshots-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 90
+
+  # ------------------------------------------------------------------
+  # IAM role — Lambda execution (least privilege)
+  # ------------------------------------------------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: event-calendar-scraper-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SnapshotBucketAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Read and write snapshots for any calendar folder in the bucket
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "${SnapshotBucket.Arn}/*/events_snapshot.json"
+
+  # ------------------------------------------------------------------
+  # Lambda function
+  # ------------------------------------------------------------------
+  ScraperFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: event-calendar-scraper
+      Description: Runs all registered calendar scrapers and stores diff snapshots in S3.
+      Runtime: python3.12
+      Handler: lambda_function.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref DeployBucket
+        S3Key: scraper.zip
+      Timeout: 120
+      MemorySize: 256
+      Environment:
+        Variables:
+          SNAPSHOT_BUCKET: !Ref SnapshotBucket
+
+  # ------------------------------------------------------------------
+  # EventBridge rule — daily trigger
+  # ------------------------------------------------------------------
+  DailySchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: event-calendar-scraper-daily
+      Description: Triggers all calendar scrapers on a schedule.
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: ScraperTarget
+          Arn: !GetAtt ScraperFunction.Arn
+
+  ScheduleInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ScraperFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailySchedule.Arn
+
+Outputs:
+  SnapshotBucketName:
+    Description: S3 bucket where all calendar snapshots are stored
+    Value: !Ref SnapshotBucket
+
+  LambdaFunctionName:
+    Description: Lambda function name
+    Value: !Ref ScraperFunction
+
+  LambdaFunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt ScraperFunction.Arn

@@ -1,0 +1,71 @@
+name: Deploy Javits Calendar Scraper
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # Required for OIDC token request
+  contents: read
+
+jobs:
+  deploy:
+    name: Package and Deploy Lambda
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Install dependencies into ./package/ so they are bundled with the Lambda zip
+      - name: Install dependencies
+        run: pip install -r requirements.txt -t ./package/
+
+      # Copy the Lambda handler into the package directory
+      - name: Bundle Lambda
+        run: |
+          cp lambda_function.py ./package/
+          cd package && zip -r $GITHUB_WORKSPACE/scraper.zip .
+
+      # Authenticate to AWS using OIDC — no long-lived credentials stored in secrets
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Upload the zip to the deploy bucket so CloudFormation and Lambda can reference it
+      - name: Upload zip to S3
+        run: |
+          aws s3 cp scraper.zip s3://${{ secrets.DEPLOY_BUCKET }}/scraper.zip
+
+      # Deploy (or update) the application CloudFormation stack
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/template.yml \
+            --stack-name event-calendar-scraper \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              DeployBucket=${{ secrets.DEPLOY_BUCKET }} \
+            --no-fail-on-empty-changeset
+
+      # Update the Lambda function code with the newly uploaded zip
+      - name: Update Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name event-calendar-scraper \
+            --s3-bucket ${{ secrets.DEPLOY_BUCKET }} \
+            --s3-key scraper.zip
+
+      - name: Wait for Lambda update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name event-calendar-scraper
