@@ -35,6 +35,7 @@ jobs:
       - name: Bundle Lambda
         run: |
           cp lambda_function.py ./package/
+          cp -r scrapers ./package/scrapers
           cd package && zip -r $GITHUB_WORKSPACE/scraper.zip .
 
       # Authenticate to AWS using OIDC — no long-lived credentials stored in secrets
