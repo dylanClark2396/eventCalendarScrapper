@@ -1,0 +1,17 @@
+# Local snapshot files (S3 is the source of truth in production)
+snapshots/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Build artifacts
+package/
+scraper.zip
+
+# OS
+.DS_Store

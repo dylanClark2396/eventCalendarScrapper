@@ -13,8 +13,11 @@ from botocore.exceptions import ClientError
 import scrapers
 
 SNAPSHOT_BUCKET = os.environ["SNAPSHOT_BUCKET"]
+NOTIFY_EMAIL = os.environ["NOTIFY_EMAIL"]
+FROM_EMAIL = os.environ["FROM_EMAIL"]
 
 s3 = boto3.client("s3")
+ses = boto3.client("ses")
 
 
 def snapshot_key(calendar_id: str) -> str:
@@ -93,6 +96,69 @@ def run_scraper(scraper) -> dict:
     }
 
 
+def build_email(results: list[dict]) -> tuple[str, str]:
+    """Return (subject, html_body) for the new-events notification email."""
+    total_new = sum(r["new_events_count"] for r in results)
+    now = datetime.now(timezone.utc).strftime("%B %d, %Y")
+    subject = f"{total_new} New Event{'s' if total_new != 1 else ''} Found — {now}"
+
+    sections = []
+    for r in results:
+        if not r["new_events"]:
+            continue
+        rows = ""
+        for e in r["new_events"]:
+            link_html = f'<a href="{e["link"]}">{e["link"]}</a>' if e["link"] else "—"
+            desc = e["description"][:200] + "…" if len(e.get("description", "")) > 200 else e.get("description", "")
+            rows += f"""
+            <tr>
+              <td style="padding:8px;border-bottom:1px solid #eee;font-weight:bold">{e["title"]}</td>
+              <td style="padding:8px;border-bottom:1px solid #eee;white-space:nowrap">{e["date"]}</td>
+              <td style="padding:8px;border-bottom:1px solid #eee;font-size:13px;color:#555">{desc}</td>
+              <td style="padding:8px;border-bottom:1px solid #eee;font-size:13px">{link_html}</td>
+            </tr>"""
+        sections.append(f"""
+        <h2 style="color:#333;margin-top:32px">{r["calendar_name"]} — {r["new_events_count"]} new</h2>
+        <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:14px">
+          <thead>
+            <tr style="background:#f5f5f5">
+              <th style="padding:8px;text-align:left">Event</th>
+              <th style="padding:8px;text-align:left">Dates</th>
+              <th style="padding:8px;text-align:left">Description</th>
+              <th style="padding:8px;text-align:left">Link</th>
+            </tr>
+          </thead>
+          <tbody>{rows}</tbody>
+        </table>""")
+
+    body = f"""
+    <html><body style="font-family:sans-serif;color:#222;max-width:900px;margin:0 auto;padding:24px">
+      <h1 style="color:#111">{total_new} New Event{'s' if total_new != 1 else ''} Found</h1>
+      <p style="color:#666">Scraped on {now}</p>
+      {"".join(sections)}
+    </body></html>"""
+
+    return subject, body
+
+
+def send_notification(results: list[dict]) -> None:
+    total_new = sum(r["new_events_count"] for r in results)
+    if total_new == 0:
+        print("No new events across any calendar — skipping email.")
+        return
+
+    subject, html_body = build_email(results)
+    ses.send_email(
+        Source=FROM_EMAIL,
+        Destination={"ToAddresses": [NOTIFY_EMAIL]},
+        Message={
+            "Subject": {"Data": subject},
+            "Body": {"Html": {"Data": html_body}},
+        },
+    )
+    print(f"Notification sent to {NOTIFY_EMAIL}: {subject}")
+
+
 def handler(event, context):
     results = []
     errors = []
@@ -103,6 +169,8 @@ def handler(event, context):
         except Exception as e:
             print(f"[{scraper.CALENDAR_ID}] ERROR: {e}")
             errors.append({"calendar_id": scraper.CALENDAR_ID, "error": str(e)})
+
+    send_notification(results)
 
     status = 200 if not errors else 207
     return {

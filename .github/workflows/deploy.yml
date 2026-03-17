@@ -58,6 +58,7 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides \
               DeployBucket=${{ secrets.DEPLOY_BUCKET }} \
+              FromEmail=${{ secrets.FROM_EMAIL }} \
             --no-fail-on-empty-changeset
 
       # Update the Lambda function code with the newly uploaded zip

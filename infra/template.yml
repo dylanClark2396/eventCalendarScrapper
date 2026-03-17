@@ -12,6 +12,17 @@ Parameters:
     Type: String
     Description: S3 bucket where the Lambda zip was uploaded (created by bootstrap stack).
 
+  NotifyEmail:
+    Type: String
+    Default: "max@kineticevents.com"
+    Description: Recipient email address for new-event notifications.
+
+  FromEmail:
+    Type: String
+    Description: >
+      Sender email address for SES. Must be verified in SES before use.
+      Verify it with: aws ses verify-email-identity --email-address <address>
+
   ScheduleExpression:
     Type: String
     Default: "rate(1 day)"
@@ -63,6 +74,13 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                 Resource: !Sub "${SnapshotBucket.Arn}/*/events_snapshot.json"
+              # Send notification emails via SES
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource:
+                  - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${NotifyEmail}"
+                  - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${FromEmail}"
 
   # ------------------------------------------------------------------
   # Lambda function
@@ -83,6 +101,8 @@ Resources:
       Environment:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket
+          NOTIFY_EMAIL: !Ref NotifyEmail
+          FROM_EMAIL: !Ref FromEmail
 
   # ------------------------------------------------------------------
   # EventBridge rule — daily trigger
