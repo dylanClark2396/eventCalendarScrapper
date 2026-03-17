@@ -1,11 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   Event Calendar Scraper — application stack.
-  Creates the shared S3 snapshot bucket, Lambda execution role, Lambda function,
-  and an EventBridge rule that triggers all scrapers daily.
-  Each calendar's snapshot is stored at s3://<bucket>/<calendar_id>/events_snapshot.json.
-
-  Deployed automatically by GitHub Actions (see .github/workflows/deploy.yml).
 
 Parameters:
   DeployBucket:

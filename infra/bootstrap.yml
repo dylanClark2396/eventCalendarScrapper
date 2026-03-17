@@ -82,6 +82,7 @@ Resources:
                   - cloudformation:ExecuteChangeSet
                   - cloudformation:DescribeChangeSet
                   - cloudformation:DeleteChangeSet
+                  - cloudformation:GetTemplateSummary
                 Resource:
                   - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/event-calendar-scraper/*"
                   - !Sub "arn:aws:cloudformation:${AWS::Region}:aws:transform/*"
