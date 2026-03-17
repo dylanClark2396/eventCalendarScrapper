@@ -63,6 +63,11 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
+              # List bucket so missing keys return 404 (NoSuchKey) instead of 403
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt SnapshotBucket.Arn
               # Read and write snapshots for any calendar folder in the bucket
               - Effect: Allow
                 Action:
