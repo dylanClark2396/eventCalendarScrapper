@@ -43,12 +43,12 @@ Resources:
             NoncurrentVersionExpirationInDays: 90
 
   # ------------------------------------------------------------------
-  # IAM role — Lambda execution (least privilege)
+  # IAM role — worker Lambda (S3 snapshots only)
   # ------------------------------------------------------------------
-  LambdaExecutionRole:
+  WorkerExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: event-calendar-scraper-lambda-role
+      RoleName: event-calendar-scraper-worker-role
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -63,18 +63,41 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              # List bucket so missing keys return 404 (NoSuchKey) instead of 403
               - Effect: Allow
                 Action:
                   - s3:ListBucket
                 Resource: !GetAtt SnapshotBucket.Arn
-              # Read and write snapshots for any calendar folder in the bucket
               - Effect: Allow
                 Action:
                   - s3:GetObject
                   - s3:PutObject
                 Resource: !Sub "${SnapshotBucket.Arn}/*/events_snapshot.json"
-              # Send notification emails via SES
+
+  # ------------------------------------------------------------------
+  # IAM role — orchestrator Lambda (SES + invoke worker)
+  # ------------------------------------------------------------------
+  OrchestratorExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: event-calendar-scraper-orchestrator-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: OrchestratorPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt ScraperWorkerFunction.Arn
               - Effect: Allow
                 Action:
                   - ses:SendEmail
@@ -83,29 +106,50 @@ Resources:
                   - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${FromEmail}"
 
   # ------------------------------------------------------------------
-  # Lambda function
+  # Worker Lambda — runs a single scraper
   # ------------------------------------------------------------------
-  ScraperFunction:
+  ScraperWorkerFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: event-calendar-scraper
-      Description: Runs all registered calendar scrapers and stores diff snapshots in S3.
+      FunctionName: event-calendar-scraper-worker
+      Description: Runs one calendar scraper and stores its diff snapshot in S3.
       Runtime: python3.12
-      Handler: lambda_function.handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: lambda_function.worker_handler
+      Role: !GetAtt WorkerExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref DeployBucket
+        S3Key: scraper.zip
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          SNAPSHOT_BUCKET: !Ref SnapshotBucket
+
+  # ------------------------------------------------------------------
+  # Orchestrator Lambda — fans out to workers, sends email
+  # ------------------------------------------------------------------
+  ScraperOrchestratorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: event-calendar-scraper-orchestrator
+      Description: Fans out to per-scraper workers in parallel and sends a single notification email.
+      Runtime: python3.12
+      Handler: lambda_function.orchestrator_handler
+      Role: !GetAtt OrchestratorExecutionRole.Arn
       Code:
         S3Bucket: !Ref DeployBucket
         S3Key: scraper.zip
       Timeout: 120
-      MemorySize: 256
+      MemorySize: 128
       Environment:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket
           NOTIFY_EMAIL: !Ref NotifyEmail
           FROM_EMAIL: !Ref FromEmail
+          WORKER_FUNCTION_NAME: !Ref ScraperWorkerFunction
 
   # ------------------------------------------------------------------
-  # EventBridge rule — daily trigger
+  # EventBridge rule — daily trigger (hits orchestrator)
   # ------------------------------------------------------------------
   DailySchedule:
     Type: AWS::Events::Rule
@@ -115,13 +159,13 @@ Resources:
       ScheduleExpression: !Ref ScheduleExpression
       State: ENABLED
       Targets:
-        - Id: ScraperTarget
-          Arn: !GetAtt ScraperFunction.Arn
+        - Id: OrchestratorTarget
+          Arn: !GetAtt ScraperOrchestratorFunction.Arn
 
   ScheduleInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt ScraperFunction.Arn
+      FunctionName: !GetAtt ScraperOrchestratorFunction.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt DailySchedule.Arn
@@ -131,10 +175,14 @@ Outputs:
     Description: S3 bucket where all calendar snapshots are stored
     Value: !Ref SnapshotBucket
 
-  LambdaFunctionName:
-    Description: Lambda function name
-    Value: !Ref ScraperFunction
+  WorkerFunctionName:
+    Description: Worker Lambda function name
+    Value: !Ref ScraperWorkerFunction
 
-  LambdaFunctionArn:
-    Description: Lambda function ARN
-    Value: !GetAtt ScraperFunction.Arn
+  OrchestratorFunctionName:
+    Description: Orchestrator Lambda function name
+    Value: !Ref ScraperOrchestratorFunction
+
+  OrchestratorFunctionArn:
+    Description: Orchestrator Lambda function ARN
+    Value: !GetAtt ScraperOrchestratorFunction.Arn

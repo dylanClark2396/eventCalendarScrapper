@@ -1,8 +1,11 @@
 """
-Event Calendar Scraper — AWS Lambda handler
-Runs every registered scraper, diffs against the S3 snapshot, logs changes.
+Event Calendar Scraper — AWS Lambda handlers
+
+worker_handler      — runs a single scraper (invoked by orchestrator)
+orchestrator_handler — fans out to all workers in parallel, sends one email
 """
 
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -14,12 +17,15 @@ from botocore.exceptions import ClientError
 import scrapers
 
 SNAPSHOT_BUCKET = os.environ["SNAPSHOT_BUCKET"]
-NOTIFY_EMAIL = os.environ["NOTIFY_EMAIL"]
-FROM_EMAIL = os.environ["FROM_EMAIL"]
 
 s3 = boto3.client("s3")
 ses = boto3.client("ses")
+lambda_client = boto3.client("lambda")
 
+
+# ---------------------------------------------------------------------------
+# Shared utilities
+# ---------------------------------------------------------------------------
 
 def snapshot_key(calendar_id: str) -> str:
     return f"{calendar_id}/events_snapshot.json"
@@ -104,8 +110,11 @@ def run_scraper(scraper) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+
 def build_email(results: list[dict]) -> tuple[str, str]:
-    """Return (subject, html_body) for the new-events notification email."""
     total_new = sum(r["new_events_count"] for r in results)
     now = datetime.now(timezone.utc).strftime("%B %d, %Y")
     subject = f"{total_new} New Event{'s' if total_new != 1 else ''} Found — {now}"
@@ -150,6 +159,9 @@ def build_email(results: list[dict]) -> tuple[str, str]:
 
 
 def send_notification(results: list[dict]) -> None:
+    notify_email = os.environ["NOTIFY_EMAIL"]
+    from_email = os.environ["FROM_EMAIL"]
+
     total_new = sum(r["new_events_count"] for r in results)
     if total_new == 0:
         print("No new events across any calendar — skipping email.")
@@ -157,26 +169,61 @@ def send_notification(results: list[dict]) -> None:
 
     subject, html_body = build_email(results)
     ses.send_email(
-        Source=FROM_EMAIL,
-        Destination={"ToAddresses": [NOTIFY_EMAIL]},
+        Source=from_email,
+        Destination={"ToAddresses": [notify_email]},
         Message={
             "Subject": {"Data": subject},
             "Body": {"Html": {"Data": html_body}},
         },
     )
-    print(f"Notification sent to {NOTIFY_EMAIL}: {subject}")
+    print(f"Notification sent to {notify_email}: {subject}")
 
 
-def handler(event, context):
+# ---------------------------------------------------------------------------
+# Worker handler — runs one scraper, returns its result dict
+# ---------------------------------------------------------------------------
+
+def worker_handler(event, context):
+    calendar_id = event["calendar_id"]
+    scraper = next((s for s in scrapers.ALL if s.CALENDAR_ID == calendar_id), None)
+    if scraper is None:
+        raise ValueError(f"Unknown calendar_id: {calendar_id!r}")
+    return run_scraper(scraper)
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator handler — fans out to workers in parallel, sends one email
+# ---------------------------------------------------------------------------
+
+def _invoke_worker(worker_function_name: str, scraper) -> dict:
+    resp = lambda_client.invoke(
+        FunctionName=worker_function_name,
+        InvocationType="RequestResponse",
+        Payload=json.dumps({"calendar_id": scraper.CALENDAR_ID}).encode(),
+    )
+    payload = json.loads(resp["Payload"].read())
+    if resp.get("FunctionError"):
+        error_msg = payload.get("errorMessage", "Unknown Lambda error")
+        raise RuntimeError(error_msg)
+    return payload
+
+
+def orchestrator_handler(event, context):
+    worker_function_name = os.environ["WORKER_FUNCTION_NAME"]
     results = []
     errors = []
 
-    for scraper in scrapers.ALL:
-        try:
-            results.append(run_scraper(scraper))
-        except Exception as e:
-            print(f"[{scraper.CALENDAR_ID}] ERROR: {e}")
-            errors.append({"calendar_id": scraper.CALENDAR_ID, "error": str(e)})
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_scraper = {
+            executor.submit(_invoke_worker, worker_function_name, s): s
+            for s in scrapers.ALL
+        }
+        for future, scraper in future_to_scraper.items():
+            try:
+                results.append(future.result())
+            except Exception as e:
+                print(f"[{scraper.CALENDAR_ID}] ERROR: {e}")
+                errors.append({"calendar_id": scraper.CALENDAR_ID, "error": str(e)})
 
     send_notification(results)
 
