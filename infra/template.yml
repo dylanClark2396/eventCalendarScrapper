@@ -135,7 +135,6 @@ Resources:
       Environment:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket
-          CHROMIUM_PATH: /opt/chromium
 
   # ------------------------------------------------------------------
   # Snapshot Diff Lambda — testing tool, diffs versioned S3 snapshots
