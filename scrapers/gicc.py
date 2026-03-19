@@ -35,7 +35,7 @@ def fetch_page(url: str) -> list[dict]:
         title = title_el.a.get_text(strip=True)
         link = title_el.a.get("href", "")
 
-        date_el = card.find("div", class_="tribe-events-calendar-list__event-date-tag")
+        date_el = card.find("div", class_="tribe-events-calendar-list__event-date-time")
         date_str = date_el.get_text(strip=True) if date_el else ""
 
         desc_el = card.find("p", class_="tribe-events-calendar-list__event-description")

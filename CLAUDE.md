@@ -11,6 +11,11 @@ In the AWS Lambda console, open `event-calendar-scraper-orchestrator`, go to **T
 
 This runs all scrapers, diffs against snapshots, and sends the results email only to `dylanclark2396@gmail.com` instead of the full recipient list.
 
+To force all scraped events into the email (useful for verifying scrapers are working, ignores snapshot diff):
+```json
+{ "test_mode": true, "force_all": true }
+```
+
 To do a full production-style test (sends to all recipients):
 ```json
 {}

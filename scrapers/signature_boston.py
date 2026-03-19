@@ -34,9 +34,11 @@ def fetch_month(year: int, month: int) -> list[dict]:
         h4 = li.find("h4")
         if not h4:
             continue
+        a = h4.find("a")
         title = h4.get_text(strip=True)
         if not title:
             continue
+        link = "https://www.signatureboston.com" + a["href"] if a and a.get("href") else ""
 
         nested = li.find("ul")
         date_str = ""
@@ -52,7 +54,7 @@ def fetch_month(year: int, month: int) -> list[dict]:
             "title": title,
             "date": date_str,
             "description": venue,
-            "link": "",
+            "link": link,
         })
 
     return events

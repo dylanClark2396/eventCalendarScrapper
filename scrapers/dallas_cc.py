@@ -27,8 +27,10 @@ def fetch_events() -> list[dict]:
     events = []
     seen = set()
 
-    # Each event has an h3 containing an anchor to its detail page
-    for h3 in soup.find_all("h3"):
+    for card in soup.find_all("div", class_="event-item"):
+        h3 = card.find("h3")
+        if not h3:
+            continue
         a = h3.find("a", href=lambda h: h and "/events/detail/" in h)
         if not a:
             continue
@@ -38,17 +40,11 @@ def fetch_events() -> list[dict]:
             continue
         seen.add(title)
 
-        # Date is in the <p> immediately before the <h3>
-        date_str = ""
-        prev = h3.find_previous_sibling("p")
-        if prev:
-            date_str = prev.get_text(strip=True)
+        date_el = card.find("p", class_="event-date")
+        date_str = date_el.get_text(strip=True) if date_el else ""
 
-        # Description is in the <h4> immediately after the <h3>
-        description = ""
-        nxt = h3.find_next_sibling("h4")
-        if nxt:
-            description = nxt.get_text(strip=True)
+        desc_el = card.find("h4")
+        description = desc_el.get_text(strip=True) if desc_el else ""
 
         events.append({
             "title": title,

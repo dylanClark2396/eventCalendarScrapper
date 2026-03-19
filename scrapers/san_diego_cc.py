@@ -32,11 +32,11 @@ def fetch_events() -> list[dict]:
         return events
 
     for item in calendar.find_all("div", class_="item"):
-        h3 = item.find("h3")
-        if not h3 or not h3.find("a"):
+        a = item.find("a", href=lambda h: h and h.startswith("/calendar/"))
+        if not a:
             continue
-        title = h3.a.get_text(strip=True)
-        href = h3.a.get("href", "")
+        title = a.get_text(strip=True)
+        href = a.get("href", "")
         link = BASE_URL + href if href.startswith("/") else href
 
         details = item.find("div", class_="event-details")

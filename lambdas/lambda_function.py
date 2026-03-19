@@ -65,7 +65,7 @@ def find_new_events(previous: list[dict], current: list[dict]) -> list[dict]:
     return [e for e in current if e.get("id", e.get("title")) not in prev_ids]
 
 
-def run_scraper(scraper) -> dict:
+def run_scraper(scraper, force_all: bool = False) -> dict:
     cid = scraper.CALENDAR_ID
     name = scraper.CALENDAR_NAME
 
@@ -80,8 +80,13 @@ def run_scraper(scraper) -> dict:
     previous_events: list[dict] = snapshot.get("events", []) if isinstance(snapshot, dict) else []
     previous_scraped_at: str = snapshot.get("scraped_at", "never")
 
-    new_events = find_new_events(previous_events, current_events)
-    removed_events = find_new_events(current_events, previous_events)
+    if force_all:
+        new_events = current_events
+        removed_events = []
+        print(f"[{cid}] force_all=True — treating all {len(current_events)} events as new.")
+    else:
+        new_events = find_new_events(previous_events, current_events)
+        removed_events = find_new_events(current_events, previous_events)
 
     if new_events:
         print(f"[{cid}] NEW ({len(new_events)}):")
@@ -189,21 +194,22 @@ def send_notification(results: list[dict], test_mode: bool = False) -> None:
 
 def worker_handler(event, context):
     calendar_id = event["calendar_id"]
+    force_all = bool(event.get("force_all", False))
     scraper = next((s for s in scrapers.ALL if s.CALENDAR_ID == calendar_id), None)
     if scraper is None:
         raise ValueError(f"Unknown calendar_id: {calendar_id!r}")
-    return run_scraper(scraper)
+    return run_scraper(scraper, force_all=force_all)
 
 
 # ---------------------------------------------------------------------------
 # Orchestrator handler — fans out to workers in parallel, sends one email
 # ---------------------------------------------------------------------------
 
-def _invoke_worker(worker_function_name: str, scraper) -> dict:
+def _invoke_worker(worker_function_name: str, scraper, force_all: bool = False) -> dict:
     resp = lambda_client.invoke(
         FunctionName=worker_function_name,
         InvocationType="RequestResponse",
-        Payload=json.dumps({"calendar_id": scraper.CALENDAR_ID}).encode(),
+        Payload=json.dumps({"calendar_id": scraper.CALENDAR_ID, "force_all": force_all}).encode(),
     )
     payload = json.loads(resp["Payload"].read())
     if resp.get("FunctionError"):
@@ -215,12 +221,13 @@ def _invoke_worker(worker_function_name: str, scraper) -> dict:
 def orchestrator_handler(event, context):
     worker_function_name = os.environ["WORKER_FUNCTION_NAME"]
     test_mode = bool(event.get("test_mode", False))
+    force_all = bool(event.get("force_all", False))
     results = []
     errors = []
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future_to_scraper = {
-            executor.submit(_invoke_worker, worker_function_name, s): s
+            executor.submit(_invoke_worker, worker_function_name, s, force_all): s
             for s in scrapers.ALL
         }
         for future, scraper in future_to_scraper.items():
