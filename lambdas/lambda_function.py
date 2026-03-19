@@ -222,13 +222,26 @@ def orchestrator_handler(event, context):
     worker_function_name = os.environ["WORKER_FUNCTION_NAME"]
     test_mode = bool(event.get("test_mode", False))
     force_all = bool(event.get("force_all", False))
+    calendar_ids = event.get("calendar_ids")  # optional list e.g. ["javits", "occc"]
+
+    targets = [
+        s for s in scrapers.ALL
+        if not calendar_ids or s.CALENDAR_ID in calendar_ids
+    ]
+
+    if calendar_ids and not targets:
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": f"No scrapers matched calendar_ids: {calendar_ids}"}),
+        }
+
     results = []
     errors = []
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future_to_scraper = {
             executor.submit(_invoke_worker, worker_function_name, s, force_all): s
-            for s in scrapers.ALL
+            for s in targets
         }
         for future, scraper in future_to_scraper.items():
             try:

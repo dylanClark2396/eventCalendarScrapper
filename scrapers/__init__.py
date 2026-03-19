@@ -4,9 +4,11 @@ from scrapers import (
     javits,
     lacc,
     nashville_mcc,
+    occc,
     phoenix_cc,
     san_diego_cc,
     signature_boston,
+    vegas_lvcva,
 )
 
 # Register every calendar scraper here.
@@ -21,7 +23,9 @@ ALL = [
     javits,
     lacc,
     nashville_mcc,
+    occc,
     phoenix_cc,
     san_diego_cc,
     signature_boston,
+    vegas_lvcva,
 ]
