@@ -31,30 +31,24 @@ def fetch_month(year: int, month: int) -> list[dict]:
 
     events = []
     for li in soup.find_all("li"):
-        h4 = li.find("h4")
+        h4 = li.find("h4", class_="event-list__title")
         if not h4:
             continue
-        a = h4.find("a")
         title = h4.get_text(strip=True)
         if not title:
             continue
-        link = "https://www.signatureboston.com" + a["href"] if a and a.get("href") else ""
 
-        nested = li.find("ul")
-        date_str = ""
-        venue = ""
-        if nested:
-            items = nested.find_all("li")
-            if len(items) >= 1:
-                venue = items[0].get_text(strip=True)
-            if len(items) >= 2:
-                date_str = items[1].get_text(strip=True)
+        date_el = li.find("li", class_="info__dates")
+        date_str = date_el.get_text(strip=True) if date_el else ""
+
+        venue_el = li.find("li", class_="info__location")
+        venue = venue_el.get_text(strip=True) if venue_el else ""
 
         events.append({
             "title": title,
             "date": date_str,
             "description": venue,
-            "link": link,
+            "link": "",
         })
 
     return events

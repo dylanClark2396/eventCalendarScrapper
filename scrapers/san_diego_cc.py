@@ -39,16 +39,19 @@ def fetch_events() -> list[dict]:
         href = a.get("href", "")
         link = BASE_URL + href if href.startswith("/") else href
 
-        details = item.find("div", class_="event-details")
-        date_str = ""
-        if details:
-            date_spans = details.find_all("span", class_="date")
-            if len(date_spans) == 1:
-                date_str = date_spans[0].get_text(strip=True)
-            elif len(date_spans) >= 2:
-                start = date_spans[0].get_text(strip=True)
-                end = date_spans[1].get_text(strip=True)
-                date_str = start if start == end else f"{start} – {end}"
+        def get_caldate(cls):
+            el = item.find("div", class_=cls)
+            if not el:
+                return ""
+            month = el.find("div", class_="month")
+            day = el.find("div", class_="day")
+            m = month.find("span", class_="field-value").get_text(strip=True) if month else ""
+            d = day.find("span", class_="field-value").get_text(strip=True) if day else ""
+            return f"{m} {d}".strip()
+
+        start_str = get_caldate("startmo")
+        end_str = get_caldate("endmo")
+        date_str = start_str if start_str == end_str else f"{start_str} – {end_str}"
 
         events.append({
             "title": title,
