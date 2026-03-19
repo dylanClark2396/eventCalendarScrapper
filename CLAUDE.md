@@ -52,7 +52,7 @@ In the AWS Lambda console, open `event-calendar-scraper-snapshot-diff`, go to **
 
 The response includes `added`, `removed`, and `available_versions` — the full list of S3 version IDs with timestamps so you can pick any two to compare.
 
-Valid `calendar_id` values: `javits`, `gicc`, `signature_boston`, `dallas_cc`, `lacc`, `nashville_mcc`, `occc`, `phoenix_cc`, `san_diego_cc`, `vegas_lvcva`
+Valid `calendar_id` values: `javits`, `gicc`, `gwcca`, `signature_boston`, `dallas_cc`, `lacc`, `miami_beach_cc`, `nashville_mcc`, `occc`, `phoenix_cc`, `san_diego_cc`, `vegas_lvcva`
 
 ---
 
@@ -61,14 +61,10 @@ Valid `calendar_id` values: `javits`, `gicc`, `signature_boston`, `dallas_cc`, `
 ### Sites That Could Not Be Scraped
 
 **GWCCA — Georgia World Congress Authority**
-- URL: https://www.gwcca.org/event-calendar
-- Problem: Returns 403 Forbidden — server blocks non-browser requests
-- Workaround: Try rotating User-Agent strings or adding browser-like headers (Accept, Referer, etc.). If still blocked, use Playwright/Selenium to render in a real browser. Last resort: contact GWCCA for a data feed.
+- ✅ Resolved — direct site blocked by Cloudflare (403). Uses conventioncalendar.com as data source: `https://conventioncalendar.com/us/ga/atlanta/georgia-world-congress-center`
 
 **Miami Beach Convention Center**
-- URL: https://www.miamibeachconvention.com/events
-- Problem: Returns 403 Forbidden — server blocks non-browser requests
-- Workaround: Same as GWCCA — try more realistic headers first, then Playwright if needed.
+- ✅ Resolved — direct site blocked by Cloudflare (403). Uses conventioncalendar.com as data source: `https://conventioncalendar.com/us/fl/miami-beach/miami-beach-convention-center`
 
 **Orange County Convention Center (OCCC)**
 - ✅ Resolved — uses public RSS feed at `https://events.occc.net/event/rss/`

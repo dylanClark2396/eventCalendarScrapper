@@ -1,8 +1,10 @@
 from scrapers import (
     dallas_cc,
     gicc,
+    gwcca,
     javits,
     lacc,
+    miami_beach_cc,
     nashville_mcc,
     occc,
     phoenix_cc,
@@ -20,8 +22,10 @@ from scrapers import (
 ALL = [
     dallas_cc,
     gicc,
+    gwcca,
     javits,
     lacc,
+    miami_beach_cc,
     nashville_mcc,
     occc,
     phoenix_cc,
