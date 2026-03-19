@@ -75,7 +75,10 @@ def fetch_events() -> list[dict]:
             next_a = next_el.find("a")
             if next_a and next_a.get("href"):
                 href = next_a["href"]
-                url = f"https://www.miamibeachconvention.com{href}" if href.startswith("/") else href
+                if href.startswith("/") or href.startswith("?"):
+                    url = f"https://www.miamibeachconvention.com/events{href}" if href.startswith("?") else f"https://www.miamibeachconvention.com{href}"
+                else:
+                    url = href
             else:
                 url = None
         else:
