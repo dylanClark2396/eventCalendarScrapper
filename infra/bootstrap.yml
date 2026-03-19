@@ -87,7 +87,7 @@ Resources:
                   - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/event-calendar-scraper/*"
                   - !Sub "arn:aws:cloudformation:${AWS::Region}:aws:transform/*"
 
-              # CloudFormation creates/updates/deletes the Lambda execution role
+              # CloudFormation creates/updates/deletes the Lambda execution roles
               - Sid: IAMLambdaRole
                 Effect: Allow
                 Action:
@@ -104,15 +104,15 @@ Resources:
                   - iam:TagRole
                   - iam:UntagRole
                 Resource:
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/event-calendar-scraper-lambda-role"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/event-calendar-scraper-*"
 
-              # PassRole so CloudFormation can assign the execution role to the Lambda
+              # PassRole so CloudFormation can assign execution roles to Lambda functions
               - Sid: PassLambdaRole
                 Effect: Allow
                 Action: iam:PassRole
-                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/event-calendar-scraper-lambda-role"
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/event-calendar-scraper-*"
 
-              # CloudFormation creates/updates/deletes the Lambda function;
+              # CloudFormation creates/updates/deletes the Lambda functions;
               # GitHub Actions also calls UpdateFunctionCode directly.
               - Sid: LambdaFunction
                 Effect: Allow
@@ -129,7 +129,7 @@ Resources:
                   - lambda:TagResource
                   - lambda:UntagResource
                 Resource:
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:event-calendar-scraper"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:event-calendar-scraper-*"
 
               # CloudFormation creates/manages the shared snapshot S3 bucket
               - Sid: S3SnapshotBucket
