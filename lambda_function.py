@@ -62,7 +62,7 @@ def make_event_id(title: str) -> str:
 
 def find_new_events(previous: list[dict], current: list[dict]) -> list[dict]:
     prev_ids = {e["id"] for e in previous if "id" in e} | {e["title"] for e in previous if "id" not in e}
-    return [e for e in current if e["id"] not in prev_ids]
+    return [e for e in current if e.get("id", e.get("title")) not in prev_ids]
 
 
 def run_scraper(scraper) -> dict:
