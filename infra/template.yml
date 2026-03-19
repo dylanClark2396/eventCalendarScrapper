@@ -66,6 +66,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:ListBucket
+                  - s3:ListBucketVersions
                 Resource: !GetAtt SnapshotBucket.Arn
               - Effect: Allow
                 Action:
@@ -121,6 +122,26 @@ Resources:
         S3Key: scraper.zip
       Timeout: 60
       MemorySize: 256
+      Environment:
+        Variables:
+          SNAPSHOT_BUCKET: !Ref SnapshotBucket
+
+  # ------------------------------------------------------------------
+  # Snapshot Diff Lambda — testing tool, diffs versioned S3 snapshots
+  # ------------------------------------------------------------------
+  SnapshotDiffFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: event-calendar-scraper-snapshot-diff
+      Description: Diffs two versioned S3 snapshots for a given calendar_id.
+      Runtime: python3.12
+      Handler: snapshot_diff.handler
+      Role: !GetAtt WorkerExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref DeployBucket
+        S3Key: scraper.zip
+      Timeout: 30
+      MemorySize: 128
       Environment:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket

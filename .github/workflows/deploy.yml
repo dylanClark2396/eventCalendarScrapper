@@ -34,7 +34,8 @@ jobs:
       # Copy the Lambda handler into the package directory
       - name: Bundle Lambda
         run: |
-          cp lambda_function.py ./package/
+          cp lambdas/lambda_function.py ./package/
+          cp lambdas/snapshot_diff.py ./package/
           cp -r scrapers ./package/scrapers
           cd package && zip -r $GITHUB_WORKSPACE/scraper.zip .
 
@@ -62,21 +63,18 @@ jobs:
               FromEmail=${{ secrets.FROM_EMAIL }} \
             --no-fail-on-empty-changeset
 
-      # Update both Lambda functions with the newly uploaded zip
+      # Update all Lambda functions with the newly uploaded zip
       - name: Update Lambda function code
         run: |
-          aws lambda update-function-code \
-            --function-name event-calendar-scraper-worker \
-            --s3-bucket ${{ secrets.DEPLOY_BUCKET }} \
-            --s3-key scraper.zip
-          aws lambda update-function-code \
-            --function-name event-calendar-scraper-orchestrator \
-            --s3-bucket ${{ secrets.DEPLOY_BUCKET }} \
-            --s3-key scraper.zip
+          for fn in event-calendar-scraper-worker event-calendar-scraper-orchestrator event-calendar-scraper-snapshot-diff; do
+            aws lambda update-function-code \
+              --function-name $fn \
+              --s3-bucket ${{ secrets.DEPLOY_BUCKET }} \
+              --s3-key scraper.zip
+          done
 
       - name: Wait for Lambda updates to complete
         run: |
-          aws lambda wait function-updated \
-            --function-name event-calendar-scraper-worker
-          aws lambda wait function-updated \
-            --function-name event-calendar-scraper-orchestrator
+          for fn in event-calendar-scraper-worker event-calendar-scraper-orchestrator event-calendar-scraper-snapshot-diff; do
+            aws lambda wait function-updated --function-name $fn
+          done
