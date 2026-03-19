@@ -5,7 +5,12 @@ Runs all registered scrapers and compares against local snapshots.
 """
 
 import json
+import os
 import sys
+
+# Allow imports from the repo root (scrapers package lives there)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +20,7 @@ import scrapers
 if sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-SNAPSHOT_DIR = Path("snapshots")
+SNAPSHOT_DIR = Path(__file__).parent / "snapshots"
 
 
 def snapshot_path(calendar_id: str) -> Path:
