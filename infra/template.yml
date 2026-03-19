@@ -9,8 +9,8 @@ Parameters:
 
   NotifyEmail:
     Type: String
-    Default: "max@kineticevents.com"
-    Description: Recipient email address for new-event notifications.
+    Default: "max@kineticevents.com,dylanclark2396@gmail.com"
+    Description: Comma-separated recipient email addresses for new-event notifications.
 
   FromEmail:
     Type: String
@@ -103,7 +103,8 @@ Resources:
                 Action:
                   - ses:SendEmail
                 Resource:
-                  - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${NotifyEmail}"
+                  - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/max@kineticevents.com"
+                  - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/dylanclark2396@gmail.com"
                   - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${FromEmail}"
 
   # ------------------------------------------------------------------

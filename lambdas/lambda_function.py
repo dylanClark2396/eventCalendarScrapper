@@ -158,8 +158,12 @@ def build_email(results: list[dict]) -> tuple[str, str]:
     return subject, body
 
 
-def send_notification(results: list[dict]) -> None:
-    notify_email = os.environ["NOTIFY_EMAIL"]
+def send_notification(results: list[dict], test_mode: bool = False) -> None:
+    if test_mode:
+        notify_emails = ["dylanclark2396@gmail.com"]
+        print("Test mode — sending only to dylanclark2396@gmail.com")
+    else:
+        notify_emails = [e.strip() for e in os.environ["NOTIFY_EMAIL"].split(",")]
     from_email = os.environ["FROM_EMAIL"]
 
     total_new = sum(r["new_events_count"] for r in results)
@@ -170,13 +174,13 @@ def send_notification(results: list[dict]) -> None:
     subject, html_body = build_email(results)
     ses.send_email(
         Source=from_email,
-        Destination={"ToAddresses": [notify_email]},
+        Destination={"ToAddresses": notify_emails},
         Message={
             "Subject": {"Data": subject},
             "Body": {"Html": {"Data": html_body}},
         },
     )
-    print(f"Notification sent to {notify_email}: {subject}")
+    print(f"Notification sent to {notify_emails}: {subject}")
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +214,7 @@ def _invoke_worker(worker_function_name: str, scraper) -> dict:
 
 def orchestrator_handler(event, context):
     worker_function_name = os.environ["WORKER_FUNCTION_NAME"]
+    test_mode = bool(event.get("test_mode", False))
     results = []
     errors = []
 
@@ -225,7 +230,7 @@ def orchestrator_handler(event, context):
                 print(f"[{scraper.CALENDAR_ID}] ERROR: {e}")
                 errors.append({"calendar_id": scraper.CALENDAR_ID, "error": str(e)})
 
-    send_notification(results)
+    send_notification(results, test_mode=test_mode)
 
     status = 200 if not errors else 207
     return {

@@ -1,5 +1,77 @@
 # Project Notes
 
+## Testing
+
+### Testing the Orchestrator Lambda
+In the AWS Lambda console, open `event-calendar-scraper-orchestrator`, go to **Test**, and use:
+
+```json
+{ "test_mode": true }
+```
+
+This runs all scrapers, diffs against snapshots, and sends the results email only to `dylanclark2396@gmail.com` instead of the full recipient list.
+
+To do a full production-style test (sends to all recipients):
+```json
+{}
+```
+
+---
+
+### Testing the Snapshot Diff Lambda
+In the AWS Lambda console, open `event-calendar-scraper-snapshot-diff`, go to **Test**.
+
+**Diff the two most recent snapshots for a calendar:**
+```json
+{ "calendar_id": "javits" }
+```
+
+**Diff two specific versions** (use version IDs from the `available_versions` field in a previous response):
+```json
+{
+  "calendar_id": "javits",
+  "version_id_old": "abc123...",
+  "version_id_new": "def456..."
+}
+```
+
+The response includes `added`, `removed`, and `available_versions` — the full list of S3 version IDs with timestamps so you can pick any two to compare.
+
+Valid `calendar_id` values: `javits`, `gicc`, `signature_boston`, `dallas_cc`, `lacc`, `nashville_mcc`, `phoenix_cc`, `san_diego_cc`
+
+---
+
+## Scrapers
+
+### Sites That Could Not Be Scraped
+
+**GWCCA — Georgia World Congress Authority**
+- URL: https://www.gwcca.org/event-calendar
+- Problem: Returns 403 Forbidden — server blocks non-browser requests
+- Workaround: Try rotating User-Agent strings or adding browser-like headers (Accept, Referer, etc.). If still blocked, use Playwright/Selenium to render in a real browser. Last resort: contact GWCCA for a data feed.
+
+**Miami Beach Convention Center**
+- URL: https://www.miamibeachconvention.com/events
+- Problem: Returns 403 Forbidden — server blocks non-browser requests
+- Workaround: Same as GWCCA — try more realistic headers first, then Playwright if needed.
+
+**Orange County Convention Center (OCCC)**
+- URL: https://events.occc.net/
+- Problem: REST API at `/includes/rest_v2/plugins_events_events_by_date/find/` requires an authentication token embedded in the frontend JS (`core.simpleToken`). Direct API calls return 403.
+- Workaround: Extract the token from the page's JavaScript on each scrape run (token may rotate). Or use Playwright to render the Vue.js page and scrape the DOM after JS executes.
+
+**Vegas Means Business**
+- URL: https://www.vegasmeansbusiness.com/destination-calendar/
+- Problem: Events are loaded dynamically via JavaScript (goatee templating engine). No events present in the initial HTML response.
+- Workaround: Use Playwright/Selenium to load the page, wait for `.events-list` to populate, then scrape. Alternatively, intercept the network requests in DevTools to find the underlying API endpoint.
+
+### Adding Playwright/Selenium Support
+If a headless browser approach is needed, Lambda does not support Chromium out of the box.
+Options:
+- Use a Lambda Layer with a pre-built Chromium binary (e.g., `chrome-aws-lambda` or `playwright-aws-lambda`)
+- Run the JS-dependent scrapers in a separate Lambda with a larger memory/timeout allocation
+- Use AWS Fargate for scrapers that need a full browser
+
 ## Infrastructure
 
 ### IAM / Permissions
