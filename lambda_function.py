@@ -3,6 +3,7 @@ Event Calendar Scraper — AWS Lambda handler
 Runs every registered scraper, diffs against the S3 snapshot, logs changes.
 """
 
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -49,9 +50,13 @@ def save_snapshot(calendar_id: str, events: list[dict]) -> None:
     print(f"[{calendar_id}] Snapshot saved → s3://{SNAPSHOT_BUCKET}/{key} ({len(events)} events)")
 
 
+def make_event_id(title: str) -> str:
+    return hashlib.sha1(title.strip().lower().encode()).hexdigest()[:12]
+
+
 def find_new_events(previous: list[dict], current: list[dict]) -> list[dict]:
-    prev_keys = {(e["title"], e["date"]) for e in previous}
-    return [e for e in current if (e["title"], e["date"]) not in prev_keys]
+    prev_ids = {e["id"] for e in previous if "id" in e} | {e["title"] for e in previous if "id" not in e}
+    return [e for e in current if e["id"] not in prev_ids]
 
 
 def run_scraper(scraper) -> dict:
@@ -61,6 +66,9 @@ def run_scraper(scraper) -> dict:
     print(f"[{cid}] Scraping {name} ...")
     current_events = scraper.fetch_events()
     print(f"[{cid}] Fetched {len(current_events)} events.")
+
+    for e in current_events:
+        e.setdefault("id", make_event_id(e["title"]))
 
     snapshot = load_snapshot(cid)
     previous_events: list[dict] = snapshot.get("events", []) if isinstance(snapshot, dict) else []
