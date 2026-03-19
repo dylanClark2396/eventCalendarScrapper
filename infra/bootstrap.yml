@@ -131,6 +131,13 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:event-calendar-scraper-*"
 
+              # Read external Lambda Layers (e.g. sparticuz/chromium for Playwright)
+              - Sid: LambdaLayerRead
+                Effect: Allow
+                Action:
+                  - lambda:GetLayerVersion
+                Resource: "*"
+
               # CloudFormation creates/manages the shared snapshot S3 bucket
               - Sid: S3SnapshotBucket
                 Effect: Allow

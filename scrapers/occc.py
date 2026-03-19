@@ -1,60 +1,68 @@
 """
 Scraper for Orange County Convention Center event calendar.
 https://events.occc.net/
-Uses the public RSS feed.
+Vue.js + Ungerboeck rendered — uses Playwright to intercept the REST API response.
 """
 
-import re
-import xml.etree.ElementTree as ET
+import json
 
-import requests
+from playwright.sync_api import sync_playwright
+
+from scrapers._playwright import CHROMIUM_PATH, LAUNCH_ARGS
 
 CALENDAR_ID = "occc"
 CALENDAR_NAME = "Orange County Convention Center"
-RSS_URL = "https://events.occc.net/event/rss/"
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    )
-}
-
-# Matches "03/18/2026 to 03/22/2026" in description CDATA
-DATE_RE = re.compile(r"(\d{2}/\d{2}/\d{4})\s+to\s+(\d{2}/\d{2}/\d{4})")
+CALENDAR_URL = "https://events.occc.net/"
+API_PATH = "plugins_events_events_by_date/find"
 
 
 def fetch_events() -> list[dict]:
-    response = requests.get(RSS_URL, headers=HEADERS, timeout=30)
-    response.raise_for_status()
+    api_payloads = []
 
-    root = ET.fromstring(response.content)
-    channel = root.find("channel")
-    if channel is None:
-        return []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM_PATH, args=LAUNCH_ARGS)
+        page = browser.new_page()
+
+        def handle_response(response):
+            if API_PATH in response.url:
+                try:
+                    api_payloads.append(response.json())
+                except Exception:
+                    pass
+
+        page.on("response", handle_response)
+        page.goto(CALENDAR_URL, wait_until="networkidle", timeout=60000)
+        browser.close()
 
     events = []
-    for item in channel.findall("item"):
-        title = (item.findtext("title") or "").strip()
-        if not title:
-            continue
+    seen = set()
 
-        link = (item.findtext("link") or "").strip()
-        description = (item.findtext("description") or "")
+    for payload in api_payloads:
+        items = payload if isinstance(payload, list) else payload.get("items", [])
+        for item in items:
+            title = (item.get("Description") or item.get("EventName") or item.get("title") or "").strip()
+            if not title:
+                continue
 
-        match = DATE_RE.search(description)
-        if match:
-            start, end = match.group(1), match.group(2)
-            date_str = start if start == end else f"{start} – {end}"
-        else:
-            date_str = ""
+            start = item.get("StartDate") or item.get("start_date") or item.get("start") or ""
+            end = item.get("EndDate") or item.get("end_date") or item.get("end") or ""
+            if end and end != start:
+                date_str = f"{start} – {end}"
+            else:
+                date_str = start
 
-        events.append({
-            "title": title,
-            "date": date_str,
-            "description": "",
-            "link": link,
-        })
+            link = item.get("WebAddress") or item.get("url") or item.get("link") or ""
+            if link and not link.startswith("http"):
+                link = f"https://events.occc.net{link}"
+
+            key = (title, date_str)
+            if key not in seen:
+                seen.add(key)
+                events.append({
+                    "title": title,
+                    "date": date_str,
+                    "description": "",
+                    "link": link,
+                })
 
     return events

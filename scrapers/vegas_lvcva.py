@@ -1,71 +1,86 @@
 """
 Scraper for Las Vegas convention events calendar.
 https://www.vegasmeansbusiness.com/destination-calendar/
-Uses the public RSS feed, filtered to convention events only.
+Simpleview JS-rendered — uses Playwright to intercept the API response.
 """
 
-import re
-import xml.etree.ElementTree as ET
+import json
 
-import requests
+from playwright.sync_api import sync_playwright
+
+from scrapers._playwright import CHROMIUM_PATH, LAUNCH_ARGS
 
 CALENDAR_ID = "vegas_lvcva"
 CALENDAR_NAME = "Las Vegas Conventions"
-RSS_URL = "https://www.vegasmeansbusiness.com/event/rss/"
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    )
-}
-
-# Matches "03/19/2026 to 03/21/2026" in description CDATA
-DATE_RANGE_RE = re.compile(r"(\d{2}/\d{2}/\d{4})\s+to\s+(\d{2}/\d{2}/\d{4})")
-# Matches "Starting 01/01/2025"
-DATE_STARTING_RE = re.compile(r"Starting\s+(\d{2}/\d{2}/\d{4})")
+CALENDAR_URL = "https://www.vegasmeansbusiness.com/destination-calendar/"
 
 
 def fetch_events() -> list[dict]:
-    response = requests.get(RSS_URL, headers=HEADERS, timeout=30)
-    response.raise_for_status()
+    api_payloads = []
 
-    root = ET.fromstring(response.content)
-    channel = root.find("channel")
-    if channel is None:
-        return []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM_PATH, args=LAUNCH_ARGS)
+        page = browser.new_page()
+
+        def handle_response(response):
+            # Simpleview loads calendar data via its svapi or internal widget API
+            if "svapi" in response.url or "calendar" in response.url or "convention" in response.url.lower():
+                try:
+                    data = response.json()
+                    if data and isinstance(data, (dict, list)):
+                        api_payloads.append((response.url, data))
+                except Exception:
+                    pass
+
+        page.on("response", handle_response)
+        page.goto(CALENDAR_URL, wait_until="networkidle", timeout=60000)
+        browser.close()
+
+    # Log intercepted URLs to help with debugging if needed
+    for url, _ in api_payloads:
+        print(f"[vegas_lvcva] Intercepted: {url}")
 
     events = []
-    for item in channel.findall("item"):
-        # Exclude entertainment/shows — keep conventions, trade shows, conferences
-        categories = [c.text.strip() for c in item.findall("category") if c.text]
-        if any(cat.startswith("Shows:") for cat in categories):
-            continue
+    seen = set()
 
-        title = (item.findtext("title") or "").strip()
-        if not title:
-            continue
+    for url, payload in api_payloads:
+        # Simpleview responses may be nested under various keys
+        items = []
+        if isinstance(payload, list):
+            items = payload
+        elif isinstance(payload, dict):
+            for key in ("results", "items", "data", "events", "records"):
+                if isinstance(payload.get(key), list):
+                    items = payload[key]
+                    break
 
-        link = (item.findtext("link") or "").strip()
-        description = item.findtext("description") or ""
+        for item in items:
+            title = (
+                item.get("title") or item.get("name") or item.get("EventName")
+                or item.get("event_name") or ""
+            ).strip()
+            if not title:
+                continue
 
-        range_match = DATE_RANGE_RE.search(description)
-        start_match = DATE_STARTING_RE.search(description)
+            start = item.get("start_date") or item.get("StartDate") or item.get("start") or ""
+            end = item.get("end_date") or item.get("EndDate") or item.get("end") or ""
+            if end and end != start:
+                date_str = f"{start} – {end}"
+            else:
+                date_str = start
 
-        if range_match:
-            start, end = range_match.group(1), range_match.group(2)
-            date_str = start if start == end else f"{start} – {end}"
-        elif start_match:
-            date_str = start_match.group(1)
-        else:
-            date_str = ""
+            link = item.get("url") or item.get("link") or item.get("WebAddress") or ""
+            if link and link.startswith("/"):
+                link = f"https://www.vegasmeansbusiness.com{link}"
 
-        events.append({
-            "title": title,
-            "date": date_str,
-            "description": "",
-            "link": link,
-        })
+            key = (title, date_str)
+            if key not in seen:
+                seen.add(key)
+                events.append({
+                    "title": title,
+                    "date": date_str,
+                    "description": "",
+                    "link": link,
+                })
 
     return events

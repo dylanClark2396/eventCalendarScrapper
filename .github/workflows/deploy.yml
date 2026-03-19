@@ -27,7 +27,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Install dependencies into ./package/ so they are bundled with the Lambda zip
+      # Install dependencies into ./package/ so they are bundled with the Lambda zip.
+      # NOTE: playwright browsers are NOT installed here — Chromium comes from the
+      # Lambda Layer (sparticuz/chromium). Only the Python playwright package is needed.
       - name: Install dependencies
         run: pip install -r requirements.txt -t ./package/
 
@@ -61,6 +63,7 @@ jobs:
             --parameter-overrides \
               DeployBucket=${{ secrets.DEPLOY_BUCKET }} \
               FromEmail=${{ secrets.FROM_EMAIL }} \
+              PlaywrightLayerArn=${{ secrets.PLAYWRIGHT_LAYER_ARN }} \
             --no-fail-on-empty-changeset
 
       # Update all Lambda functions with the newly uploaded zip

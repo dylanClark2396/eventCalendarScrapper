@@ -1,69 +1,77 @@
 """
 Scraper for Georgia World Congress Center event calendar.
 https://www.gwcca.org/event-calendar
-Direct site returns 403 (Cloudflare). Uses conventioncalendar.com as data source.
+Vue.js rendered — uses Playwright with headless Chromium.
 """
 
-from datetime import datetime, timezone
-from dateutil.relativedelta import relativedelta
+from playwright.sync_api import sync_playwright
 
-import requests
-from bs4 import BeautifulSoup
+from scrapers._playwright import CHROMIUM_PATH, LAUNCH_ARGS
 
 CALENDAR_ID = "gwcca"
 CALENDAR_NAME = "Georgia World Congress Center"
-BASE_URL = "https://conventioncalendar.com/us/ga/atlanta/georgia-world-congress-center"
-MONTHS_AHEAD = 12
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    )
-}
-
-
-def fetch_month(year: int, month: int) -> list[dict]:
-    url = f"{BASE_URL}?date={year}-{month:02d}-01"
-    response = requests.get(url, headers=HEADERS, timeout=30)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    events = []
-    for h5 in soup.find_all("h5"):
-        a = h5.find("a", href=lambda h: h and "conventioncalendar.com" in h)
-        if not a:
-            continue
-        title = a.get_text(strip=True)
-        link = a.get("href", "")
-        if not title:
-            continue
-
-        date_el = h5.find_next_sibling("p")
-        date_str = date_el.get_text(strip=True) if date_el else ""
-
-        events.append({
-            "title": title,
-            "date": date_str,
-            "description": "",
-            "link": link,
-        })
-
-    return events
+CALENDAR_URL = "https://www.gwcca.org/event-calendar"
 
 
 def fetch_events() -> list[dict]:
-    all_events = []
+    events = []
     seen = set()
-    now = datetime.now(timezone.utc)
 
-    for i in range(MONTHS_AHEAD):
-        target = now + relativedelta(months=i)
-        for e in fetch_month(target.year, target.month):
-            key = (e["title"], e["date"])
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM_PATH, args=LAUNCH_ARGS)
+        page = browser.new_page()
+        page.goto(CALENDAR_URL, wait_until="networkidle", timeout=60000)
+
+        # Wait for event cards to appear after Vue renders
+        page.wait_for_selector(".event-listing, .event-card, .event-item, article", timeout=30000)
+
+        cards = (
+            page.query_selector_all(".event-listing")
+            or page.query_selector_all(".event-card")
+            or page.query_selector_all(".event-item")
+            or page.query_selector_all("article")
+        )
+
+        for card in cards:
+            # Title — try common heading selectors
+            title_el = (
+                card.query_selector("h3")
+                or card.query_selector("h2")
+                or card.query_selector("h4")
+                or card.query_selector(".event-title")
+                or card.query_selector(".event-name")
+            )
+            if not title_el:
+                continue
+            title = title_el.inner_text().strip()
+            if not title:
+                continue
+
+            # Link
+            link_el = card.query_selector("a")
+            href = link_el.get_attribute("href") if link_el else ""
+            if href and href.startswith("/"):
+                href = f"https://www.gwcca.org{href}"
+
+            # Date
+            date_el = (
+                card.query_selector(".event-date")
+                or card.query_selector(".date")
+                or card.query_selector("time")
+                or card.query_selector(".event-dates")
+            )
+            date_str = date_el.inner_text().strip() if date_el else ""
+
+            key = (title, date_str)
             if key not in seen:
                 seen.add(key)
-                all_events.append(e)
+                events.append({
+                    "title": title,
+                    "date": date_str,
+                    "description": "",
+                    "link": href,
+                })
 
-    return all_events
+        browser.close()
+
+    return events

@@ -58,26 +58,29 @@ Valid `calendar_id` values: `javits`, `gicc`, `gwcca`, `signature_boston`, `dall
 
 ## Scrapers
 
-### Sites That Could Not Be Scraped
+### Headless Scrapers (Playwright)
+Three scrapers use Playwright with a Chromium Lambda Layer because their sites are JS-rendered:
+- **GWCCA** (`gwcca.org/event-calendar`) — Vue.js rendered, direct site
+- **OCCC** (`events.occc.net`) — Vue.js + Ungerboeck, intercepts REST API response
+- **Vegas** (`vegasmeansbusiness.com/destination-calendar`) — Simpleview widget, intercepts API response
 
-**GWCCA — Georgia World Congress Authority**
-- ✅ Resolved — direct site blocked by Cloudflare (403). Uses conventioncalendar.com as data source: `https://conventioncalendar.com/us/ga/atlanta/georgia-world-congress-center`
+The Chromium binary comes from the `sparticuz/chromium` Lambda Layer. Worker Lambda is 1024MB / 180s timeout.
+
+#### Setting Up the Playwright Lambda Layer
+1. Go to https://github.com/Sparticuz/chromium/releases
+2. Download the latest `chromium-vXX.X.X-layer.zip`
+3. In AWS Console → Lambda → Layers → Create layer, upload the zip (compatible runtime: python3.12, arch: x86_64)
+4. Copy the Layer ARN
+5. Add it as a GitHub Actions secret: `PLAYWRIGHT_LAYER_ARN`
+6. Redeploy bootstrap stack (added `lambda:GetLayerVersion` permission), then push to main
+
+#### Selector Maintenance
+GWCCA's scraper uses CSS selectors against the rendered DOM — if the site redesigns, selectors in `scrapers/gwcca.py` may need updating. OCCC and Vegas use API response interception which is more stable.
+
+### Other Scrapers
 
 **Miami Beach Convention Center**
-- ✅ Resolved — direct site blocked by Cloudflare (403). Uses conventioncalendar.com as data source: `https://conventioncalendar.com/us/fl/miami-beach/miami-beach-convention-center`
-
-**Orange County Convention Center (OCCC)**
-- ✅ Resolved — uses public RSS feed at `https://events.occc.net/event/rss/`
-
-**Vegas Means Business**
-- ✅ Resolved — uses public RSS feed at `https://www.vegasmeansbusiness.com/event/rss/`, filtered to convention events only (`/conventions_` in link URL)
-
-### Adding Playwright/Selenium Support
-If a headless browser approach is needed, Lambda does not support Chromium out of the box.
-Options:
-- Use a Lambda Layer with a pre-built Chromium binary (e.g., `chrome-aws-lambda` or `playwright-aws-lambda`)
-- Run the JS-dependent scrapers in a separate Lambda with a larger memory/timeout allocation
-- Use AWS Fargate for scrapers that need a full browser
+- ✅ Uses cloudscraper directly against `https://www.miamibeachconvention.com/events` (static HTML, Cloudflare bypassed)
 
 ## Infrastructure
 

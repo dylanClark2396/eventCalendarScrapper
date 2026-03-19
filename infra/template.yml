@@ -7,6 +7,13 @@ Parameters:
     Type: String
     Description: S3 bucket where the Lambda zip was uploaded (created by bootstrap stack).
 
+  PlaywrightLayerArn:
+    Type: String
+    Description: >
+      ARN of the Lambda Layer containing the Chromium binary for Playwright.
+      Use sparticuz/chromium — upload the layer zip from
+      https://github.com/Sparticuz/chromium/releases and note the ARN.
+
   NotifyEmail:
     Type: String
     Default: "max@kineticevents.com,dylanclark2396@gmail.com"
@@ -121,11 +128,14 @@ Resources:
       Code:
         S3Bucket: !Ref DeployBucket
         S3Key: scraper.zip
-      Timeout: 60
-      MemorySize: 256
+      Timeout: 180
+      MemorySize: 1024
+      Layers:
+        - !Ref PlaywrightLayerArn
       Environment:
         Variables:
           SNAPSHOT_BUCKET: !Ref SnapshotBucket
+          CHROMIUM_PATH: /opt/chromium
 
   # ------------------------------------------------------------------
   # Snapshot Diff Lambda — testing tool, diffs versioned S3 snapshots
