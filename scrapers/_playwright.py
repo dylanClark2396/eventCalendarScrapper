@@ -2,70 +2,85 @@
 Shared Playwright browser launch helpers for headless scrapers.
 Chromium binary is provided by the sparticuz/chromium Lambda Layer.
 
-sparticuz/chromium v110+ ships the binary brotli-compressed as chromium.br.
-This module decompresses it to /tmp/chromium on first use (cached across warm starts).
+Layer file structure (all under /opt/nodejs/node_modules/@sparticuz/chromium/bin/):
+  chromium.br       — the Chromium binary, brotli-compressed (decompress → /tmp/chromium)
+  al2023.tar.br     — AL2023 shared libraries, tar+brotli (extract → /tmp/)
+  swiftshader.tar.br — SwiftShader GPU fallback libs, tar+brotli (extract → /tmp/)
+  fonts.tar.br      — fonts, tar+brotli (extract → /tmp/)
+
+Reference: https://github.com/Sparticuz/chromium
 """
 
+import io
 import os
 import stat
+import tarfile
 
 import brotli
+
+LAYER_BIN = "/opt/nodejs/node_modules/@sparticuz/chromium/bin"
+_CHROMIUM_PATH = "/tmp/chromium"
 
 LAUNCH_ARGS = [
     "--headless=new",
     "--no-sandbox",
+    "--no-zygote",
+    "--single-process",
     "--disable-dev-shm-usage",
     "--disable-gpu",
-    "--single-process",
-    "--no-zygote",
     "--disable-setuid-sandbox",
     "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-default-apps",
+    "--disable-sync",
+    "--no-first-run",
+    "--use-gl=swiftshader",
 ]
 
-_COMPRESSED_PATHS = [
-    "/opt/chromium.br",
-    "/opt/al2023/chromium.br",
-]
-_DECOMPRESSED_PATH = "/tmp/chromium"
+
+def _extract_tar_br(path: str, dest: str) -> None:
+    """Decompress a tar+brotli archive and extract to dest."""
+    with open(path, "rb") as f:
+        tar_bytes = brotli.decompress(f.read())
+    with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
+        tar.extractall(dest)
 
 
 def prepare_chromium() -> str:
-    """
-    Return a path to a ready-to-run Chromium binary.
-    Decompresses the brotli-compressed layer binary on first call;
-    subsequent calls on warm Lambdas reuse /tmp/chromium.
-    """
-    # Env var override (e.g. for local testing)
+    """Return a path to a ready-to-run Chromium binary, extracting from the layer if needed."""
     if os.environ.get("CHROMIUM_PATH"):
         return os.environ["CHROMIUM_PATH"]
 
-    # Already decompressed on a warm Lambda
-    if os.path.isfile(_DECOMPRESSED_PATH) and os.access(_DECOMPRESSED_PATH, os.X_OK):
-        return _DECOMPRESSED_PATH
+    # Warm Lambda — already extracted
+    if os.path.isfile(_CHROMIUM_PATH) and os.access(_CHROMIUM_PATH, os.X_OK):
+        return _CHROMIUM_PATH
 
-    # Decompress from layer
-    for br_path in _COMPRESSED_PATHS:
-        if os.path.isfile(br_path):
-            print(f"[playwright] Decompressing {br_path} → {_DECOMPRESSED_PATH}")
-            with open(br_path, "rb") as f:
-                data = brotli.decompress(f.read())
-            with open(_DECOMPRESSED_PATH, "wb") as f:
-                f.write(data)
-            os.chmod(_DECOMPRESSED_PATH, os.stat(_DECOMPRESSED_PATH).st_mode | stat.S_IEXEC)
-            return _DECOMPRESSED_PATH
+    # 1. Extract the Chromium binary: chromium.br is plain brotli (not a tar)
+    br_path = f"{LAYER_BIN}/chromium.br"
+    if not os.path.isfile(br_path):
+        raise RuntimeError(f"Chromium binary not found at {br_path}")
 
-    # Fallback: uncompressed binary already in layer
-    for path in ("/opt/chromium", "/opt/chrome"):
-        if os.path.isfile(path):
-            print(f"[playwright] Using uncompressed binary at {path}")
-            return path
+    print(f"[playwright] Decompressing {br_path} → {_CHROMIUM_PATH}")
+    with open(br_path, "rb") as f:
+        data = brotli.decompress(f.read())
+    with open(_CHROMIUM_PATH, "wb") as f:
+        f.write(data)
+    os.chmod(_CHROMIUM_PATH, 0o755)
 
-    # Log /opt contents to CloudWatch to help debug missing binary
-    print("[playwright] WARNING: Chromium binary not found. /opt contents:")
-    for root, dirs, files in os.walk("/opt"):
-        for name in files:
-            print(f"  {os.path.join(root, name)}")
-    return _DECOMPRESSED_PATH  # will fail, but error will be clear
+    # 2. Extract AL2023 shared libraries (needed on python3.12 / AL2023 runtime)
+    al2023 = f"{LAYER_BIN}/al2023.tar.br"
+    if os.path.isfile(al2023):
+        print(f"[playwright] Extracting AL2023 libs from {al2023}")
+        _extract_tar_br(al2023, "/tmp")
+
+    # 3. Extract SwiftShader (software GPU fallback)
+    swiftshader = f"{LAYER_BIN}/swiftshader.tar.br"
+    if os.path.isfile(swiftshader):
+        print(f"[playwright] Extracting SwiftShader from {swiftshader}")
+        _extract_tar_br(swiftshader, "/tmp")
+
+    print(f"[playwright] Chromium ready at {_CHROMIUM_PATH}")
+    return _CHROMIUM_PATH
 
 
 CHROMIUM_PATH = prepare_chromium()
