@@ -38,16 +38,16 @@ def fetch_events() -> list[dict]:
 
     events = []
     for item in channel.findall("item"):
-        link = (item.findtext("link") or "").strip()
-
-        # Only include convention events (link contains /conventions_)
-        if "/conventions_" not in link:
+        # Exclude entertainment/shows — keep conventions, trade shows, conferences
+        categories = [c.text.strip() for c in item.findall("category") if c.text]
+        if any(cat.startswith("Shows:") for cat in categories):
             continue
 
         title = (item.findtext("title") or "").strip()
         if not title:
             continue
 
+        link = (item.findtext("link") or "").strip()
         description = item.findtext("description") or ""
 
         range_match = DATE_RANGE_RE.search(description)
