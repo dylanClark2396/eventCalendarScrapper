@@ -38,14 +38,14 @@ def _find_date(container) -> str:
     return m.group(0).strip() if m else ""
 
 
-def fetch_events() -> list[dict]:
-    response = requests.get(CALENDAR_URL, headers=HEADERS, timeout=30)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
+PER_PAGE = 6
+AJAX_URL = BASE_URL + "/events/events_ajax/{offset}?category=0&venue=0&team=0&exclude=&per_page={per_page}&came_from_page=event-list-page"
 
-    events = []
-    seen = set()
 
+def _parse_page(html: str, events: list, seen: set) -> int:
+    """Parse one AJAX page of HTML, append new events, return count added."""
+    soup = BeautifulSoup(html, "html.parser")
+    added = 0
     for h3 in soup.find_all("h3"):
         a = h3.find("a", href=lambda h: h and "/events/detail/" in h)
         if not a:
@@ -54,18 +54,28 @@ def fetch_events() -> list[dict]:
         if not title or title in seen:
             continue
         seen.add(title)
-
         link = a.get("href", "")
         if link and not link.startswith("http"):
             link = BASE_URL + link
-
         date_str = _find_date(h3.parent) if h3.parent else ""
+        events.append({"title": title, "date": date_str, "description": "", "link": link})
+        added += 1
+    return added
 
-        events.append({
-            "title": title,
-            "date": date_str,
-            "description": "",
-            "link": link,
-        })
+
+def fetch_events() -> list[dict]:
+    events = []
+    seen = set()
+    offset = 0
+
+    while True:
+        url = AJAX_URL.format(offset=offset, per_page=PER_PAGE)
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+        added = _parse_page(response.text, events, seen)
+        print(f"[lacc] offset={offset} → {added} events")
+        if added == 0:
+            break
+        offset += PER_PAGE
 
     return events
