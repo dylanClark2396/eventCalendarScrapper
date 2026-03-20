@@ -1,7 +1,8 @@
 """
 Scraper for Georgia World Congress Center event calendar.
 https://www.gwcca.org/event-calendar
-Vue.js rendered — uses Playwright with headless Chromium.
+Vue.js rendered — uses Playwright to intercept the REST API response.
+DOM scraping was abandoned because the renderer crashes during Vue hydration.
 """
 
 from playwright.sync_api import sync_playwright
@@ -14,63 +15,67 @@ CALENDAR_URL = "https://www.gwcca.org/event-calendar"
 
 
 def fetch_events() -> list[dict]:
-    events = []
-    seen = set()
+    api_payloads = []
 
     chromium_path = prepare_chromium()
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path=chromium_path, headless=False, args=LAUNCH_ARGS)
         page = browser.new_page()
-        # Block heavy resources to reduce renderer memory/crash risk
+
+        # Block heavy assets so the renderer doesn't crash processing them
         page.route(
             "**/*.{png,jpg,jpeg,gif,svg,webp,ico,woff,woff2,ttf,mp4,mp3}",
             lambda route: route.abort(),
         )
         page.route("**/*.css", lambda route: route.abort())
 
-        page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
-        # Give Vue time to render after initial load
+        def handle_response(response):
+            # Log all JSON responses to discover which API carries event data
+            try:
+                if "json" in response.headers.get("content-type", ""):
+                    data = response.json()
+                    if data:
+                        print(f"[gwcca] API response: {response.url[:120]} → keys={list(data.keys()) if isinstance(data, dict) else type(data).__name__}[{len(data) if isinstance(data, list) else ''}]")
+                        api_payloads.append((response.url, data))
+            except Exception:
+                pass
+
+        page.on("response", handle_response)
+        page.goto(CALENDAR_URL, wait_until="domcontentloaded", timeout=60000)
+        # Wait for Vue to make its API calls — bail out before full render crash
         page.wait_for_timeout(8000)
+        browser.close()
 
-        # Wait for event cards to appear after Vue renders
-        page.wait_for_selector(".event-listing, .event-card, .event-item, article", timeout=20000)
+    events = []
+    seen = set()
 
-        cards = (
-            page.query_selector_all(".event-listing")
-            or page.query_selector_all(".event-card")
-            or page.query_selector_all(".event-item")
-            or page.query_selector_all("article")
-        )
+    for url, payload in api_payloads:
+        items = []
+        if isinstance(payload, list):
+            items = payload
+        elif isinstance(payload, dict):
+            for key in ("events", "items", "data", "list", "results", "records"):
+                if isinstance(payload.get(key), list):
+                    items = payload[key]
+                    break
 
-        for card in cards:
-            # Title — try common heading selectors
-            title_el = (
-                card.query_selector("h3")
-                or card.query_selector("h2")
-                or card.query_selector("h4")
-                or card.query_selector(".event-title")
-                or card.query_selector(".event-name")
-            )
-            if not title_el:
-                continue
-            title = title_el.inner_text().strip()
+        for item in items:
+            title = (
+                item.get("title") or item.get("name") or item.get("Description")
+                or item.get("EventName") or ""
+            ).strip()
             if not title:
                 continue
 
-            # Link
-            link_el = card.query_selector("a")
-            href = link_el.get_attribute("href") if link_el else ""
-            if href and href.startswith("/"):
-                href = f"https://www.gwcca.org{href}"
+            start = (item.get("startDate") or item.get("start_date")
+                     or item.get("StartDate") or item.get("start") or "")
+            end = (item.get("endDate") or item.get("end_date")
+                   or item.get("EndDate") or item.get("end") or "")
+            date_str = f"{start} – {end}" if end and end != start else start
 
-            # Date
-            date_el = (
-                card.query_selector(".event-date")
-                or card.query_selector(".date")
-                or card.query_selector("time")
-                or card.query_selector(".event-dates")
-            )
-            date_str = date_el.inner_text().strip() if date_el else ""
+            link = item.get("url") or item.get("link") or item.get("WebAddress") or ""
+            if link and link.startswith("/"):
+                link = f"https://www.gwcca.org{link}"
 
             key = (title, date_str)
             if key not in seen:
@@ -79,9 +84,7 @@ def fetch_events() -> list[dict]:
                     "title": title,
                     "date": date_str,
                     "description": "",
-                    "link": href,
+                    "link": link,
                 })
-
-        browser.close()
 
     return events

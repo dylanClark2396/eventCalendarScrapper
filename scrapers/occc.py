@@ -39,7 +39,7 @@ def fetch_events() -> list[dict]:
         page.route("**/*.css", lambda route: route.abort())
 
         page.on("response", handle_response)
-        page.goto(CALENDAR_URL, wait_until="domcontentloaded", timeout=60000)
+        page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
         # Wait for Ungerboeck API calls to complete after initial load
         page.wait_for_timeout(10000)
         browser.close()
