@@ -47,17 +47,18 @@ def _parse_page(html: str, events: list, seen: set) -> int:
     soup = BeautifulSoup(html, "html.parser")
     added = 0
     for h3 in soup.find_all("h3"):
-        a = h3.find("a", href=lambda h: h and "/events/detail/" in h)
-        if not a:
+        # AJAX response: <a href="/events/detail/..."><h3>title</h3></a>
+        a = h3.parent if h3.parent and h3.parent.name == "a" else None
+        if a is None or "/events/detail/" not in (a.get("href") or ""):
             continue
-        title = a.get_text(strip=True)
+        title = h3.get_text(strip=True)
         if not title or title in seen:
             continue
         seen.add(title)
         link = a.get("href", "")
         if link and not link.startswith("http"):
             link = BASE_URL + link
-        date_str = _find_date(h3.parent) if h3.parent else ""
+        date_str = _find_date(a.parent) if a.parent else ""
         events.append({"title": title, "date": date_str, "description": "", "link": link})
         added += 1
     return added
