@@ -14,6 +14,7 @@ Reference: https://github.com/Sparticuz/chromium
 import io
 import os
 import stat
+import subprocess
 import tarfile
 
 import brotli
@@ -153,6 +154,16 @@ def prepare_chromium() -> str:
     existing = os.environ.get("LD_LIBRARY_PATH", "")
     os.environ["LD_LIBRARY_PATH"] = ":".join(lib_dirs) + (":" + existing if existing else "")
     print(f"[playwright] LD_LIBRARY_PATH={os.environ['LD_LIBRARY_PATH']}")
+
+    # 7. Smoke-test the binary so we can see its crash output before Playwright tries.
+    try:
+        result = subprocess.run(
+            [_CHROMIUM_PATH, "--version", "--no-sandbox"],
+            capture_output=True, text=True, timeout=10, env=os.environ,
+        )
+        print(f"[playwright] Chromium --version: rc={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr[:400]!r}")
+    except Exception as e:
+        print(f"[playwright] Chromium --version failed: {e}")
 
     print(f"[playwright] Chromium ready at {_CHROMIUM_PATH}")
     return _CHROMIUM_PATH
