@@ -35,8 +35,12 @@ def fetch_events() -> list[dict]:
 
         page.on("response", handle_response)
         page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
-        # Wait for Simpleview JS to finish loading calendar data after initial load
-        page.wait_for_timeout(15000)
+        # Initial load — wait for calendar widget to render
+        page.wait_for_timeout(8000)
+        # Scroll down several times to trigger lazy-loaded pagination
+        for _ in range(5):
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(3000)
         browser.close()
 
     # Log intercepted URLs to help with debugging if needed
@@ -52,7 +56,7 @@ def fetch_events() -> list[dict]:
         if isinstance(payload, list):
             items = payload
         elif isinstance(payload, dict):
-            for key in ("results", "items", "data", "events", "records"):
+            for key in ("list", "results", "items", "data", "events", "records"):
                 if isinstance(payload.get(key), list):
                     items = payload[key]
                     break
@@ -65,8 +69,10 @@ def fetch_events() -> list[dict]:
             if not title:
                 continue
 
-            start = item.get("start_date") or item.get("StartDate") or item.get("start") or ""
-            end = item.get("end_date") or item.get("EndDate") or item.get("end") or ""
+            start = (item.get("startDate") or item.get("start_date")
+                     or item.get("StartDate") or item.get("start") or "")
+            end = (item.get("endDate") or item.get("end_date")
+                   or item.get("EndDate") or item.get("end") or "")
             if end and end != start:
                 date_str = f"{start} – {end}"
             else:

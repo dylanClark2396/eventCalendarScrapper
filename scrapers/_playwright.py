@@ -32,6 +32,7 @@ LAUNCH_ARGS = [
     "--headless=old",
     "--no-sandbox",
     "--no-zygote",
+    "--single-process",       # run renderer in-process; no subprocess credential setup
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
     "--disable-gpu",
@@ -39,7 +40,6 @@ LAUNCH_ARGS = [
     "--disable-background-networking",
     "--disable-default-apps",
     "--disable-sync",
-    "--disable-dev-shm-usage",
     "--no-first-run",
     "--metrics-recording-only",
     "--mute-audio",
