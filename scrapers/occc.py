@@ -8,7 +8,7 @@ import json
 
 from playwright.sync_api import sync_playwright
 
-from scrapers._playwright import CHROMIUM_PATH, LAUNCH_ARGS
+from scrapers._playwright import LAUNCH_ARGS, prepare_chromium
 
 CALENDAR_ID = "occc"
 CALENDAR_NAME = "Orange County Convention Center"
@@ -20,7 +20,7 @@ def fetch_events() -> list[dict]:
     api_payloads = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=CHROMIUM_PATH, args=LAUNCH_ARGS)
+        browser = p.chromium.launch(executable_path=prepare_chromium(), args=LAUNCH_ARGS)
         page = browser.new_page()
 
         def handle_response(response):

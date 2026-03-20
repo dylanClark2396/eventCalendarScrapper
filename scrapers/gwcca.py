@@ -6,7 +6,7 @@ Vue.js rendered — uses Playwright with headless Chromium.
 
 from playwright.sync_api import sync_playwright
 
-from scrapers._playwright import CHROMIUM_PATH, LAUNCH_ARGS
+from scrapers._playwright import LAUNCH_ARGS, prepare_chromium
 
 CALENDAR_ID = "gwcca"
 CALENDAR_NAME = "Georgia World Congress Center"
@@ -18,7 +18,7 @@ def fetch_events() -> list[dict]:
     seen = set()
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=CHROMIUM_PATH, args=LAUNCH_ARGS)
+        browser = p.chromium.launch(executable_path=prepare_chromium(), args=LAUNCH_ARGS)
         page = browser.new_page()
         page.goto(CALENDAR_URL, wait_until="networkidle", timeout=60000)
 

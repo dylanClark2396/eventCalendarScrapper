@@ -81,6 +81,3 @@ def prepare_chromium() -> str:
 
     print(f"[playwright] Chromium ready at {_CHROMIUM_PATH}")
     return _CHROMIUM_PATH
-
-
-CHROMIUM_PATH = prepare_chromium()
