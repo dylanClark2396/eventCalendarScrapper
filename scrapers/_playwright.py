@@ -23,16 +23,25 @@ _CHROMIUM_PATH = "/tmp/chromium"
 
 LAUNCH_ARGS = [
     "--no-sandbox",
-    "--no-zygote",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
     "--disable-gpu",
-    "--use-gl=swiftshader",
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
     "--disable-extensions",
     "--disable-background-networking",
     "--disable-default-apps",
+    "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process",
+    "--disable-site-isolation-trials",
+    "--disable-renderer-backgrounding",
+    "--disable-breakpad",
+    "--disable-sync",
     "--no-first-run",
     "--mute-audio",
+    "--force-color-profile=srgb",
+    "--metrics-recording-only",
+    "--password-store=basic",
+    "--use-mock-keychain",
 ]
 
 
@@ -84,10 +93,27 @@ def prepare_chromium() -> str:
     if os.path.isfile(swiftshader):
         print(f"[playwright] Extracting SwiftShader from {swiftshader}")
         _extract_tar_br(swiftshader, "/tmp")
+        swiftshader_contents = []
+        for root, _, files in os.walk("/tmp"):
+            for f in files:
+                swiftshader_contents.append(os.path.join(root, f))
+        print(f"[playwright] /tmp after SwiftShader: {swiftshader_contents[:20]}")
     else:
         print(f"[playwright] WARNING: {swiftshader} not found")
 
-    # 4. Set LD_LIBRARY_PATH so Chromium can find the extracted shared libraries.
+    # 4. Extract fonts (needed for renderer stability)
+    fonts = f"{LAYER_BIN}/fonts.tar.br"
+    if os.path.isfile(fonts):
+        print(f"[playwright] Extracting fonts from {fonts}")
+        _extract_tar_br(fonts, "/tmp")
+    else:
+        print(f"[playwright] WARNING: {fonts} not found")
+
+    # 5. Set environment variables Chromium needs
+    os.environ.setdefault("HOME", "/tmp")
+    os.environ.setdefault("FONTCONFIG_PATH", "/tmp/aws")
+
+    # 6. Set LD_LIBRARY_PATH so Chromium can find the extracted shared libraries.
     lib_dirs = [d for d in ("/tmp", "/tmp/lib") if os.path.isdir(d)]
     existing = os.environ.get("LD_LIBRARY_PATH", "")
     os.environ["LD_LIBRARY_PATH"] = ":".join(lib_dirs) + (":" + existing if existing else "")
