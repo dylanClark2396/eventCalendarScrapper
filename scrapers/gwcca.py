@@ -19,7 +19,7 @@ def fetch_events() -> list[dict]:
 
     chromium_path = prepare_chromium()
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=chromium_path, args=LAUNCH_ARGS)
+        browser = p.chromium.launch(executable_path=chromium_path, headless=False, args=LAUNCH_ARGS)
         page = browser.new_page()
         page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
         # Give Vue time to render after initial load

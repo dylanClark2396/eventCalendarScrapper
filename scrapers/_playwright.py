@@ -22,42 +22,27 @@ import brotli
 LAYER_BIN = "/opt/nodejs/node_modules/@sparticuz/chromium/bin"
 _CHROMIUM_PATH = "/tmp/chromium"
 
-# Matches sparticuz/chromium default args exactly (no --disable-gpu, no --no-zygote).
-# https://github.com/Sparticuz/chromium
+# Lambda's seccomp/namespaces block the zygote's credential sandbox calls.
+# --no-zygote: skip zygote (never calls credentials.cc), fork processes directly
+# --disable-gpu: no GPU subprocess at all (nothing to sandbox)
+# --headless=old: old headless mode; does not need GPU compositing
+# NOTE: callers must use headless=False in p.chromium.launch() so Playwright
+#       does not prepend --headless (new mode) over our --headless=old.
 LAUNCH_ARGS = [
+    "--headless=old",
     "--no-sandbox",
+    "--no-zygote",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
-    "--allow-running-insecure-content",
-    "--autoplay-policy=user-gesture-required",
-    "--disable-component-update",
-    "--disable-domain-reliability",
-    "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process",
-    "--disable-features=Translate,BackForwardCache,AvoidUnnecessaryBeforeUnloadCheckPost",
-    "--disable-print-preview",
-    "--disable-site-isolation-trials",
-    "--disable-speech-api",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-breakpad",
-    "--disable-client-side-phishing-detection",
-    "--disable-component-extensions-with-background-pages",
-    "--disable-default-apps",
+    "--disable-gpu",
     "--disable-extensions",
-    "--disable-hang-monitor",
-    "--disable-ipc-flooding-protection",
-    "--disable-popup-blocking",
-    "--disable-prompt-on-repost",
-    "--disable-renderer-backgrounding",
+    "--disable-background-networking",
+    "--disable-default-apps",
     "--disable-sync",
-    "--force-color-profile=srgb",
-    "--metrics-recording-only",
+    "--disable-dev-shm-usage",
     "--no-first-run",
-    "--password-store=basic",
-    "--use-mock-keychain",
-    "--export-tagged-pdf",
+    "--metrics-recording-only",
+    "--mute-audio",
 ]
 
 

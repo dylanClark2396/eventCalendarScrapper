@@ -21,7 +21,7 @@ def fetch_events() -> list[dict]:
 
     chromium_path = prepare_chromium()
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=chromium_path, args=LAUNCH_ARGS)
+        browser = p.chromium.launch(executable_path=chromium_path, headless=False, args=LAUNCH_ARGS)
         page = browser.new_page()
 
         def handle_response(response):
