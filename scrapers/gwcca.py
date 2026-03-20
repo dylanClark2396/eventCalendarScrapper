@@ -17,8 +17,9 @@ def fetch_events() -> list[dict]:
     events = []
     seen = set()
 
+    chromium_path = prepare_chromium()
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=prepare_chromium(), args=LAUNCH_ARGS)
+        browser = p.chromium.launch(executable_path=chromium_path, args=LAUNCH_ARGS)
         page = browser.new_page()
         page.goto(CALENDAR_URL, wait_until="networkidle", timeout=60000)
 

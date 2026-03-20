@@ -19,8 +19,9 @@ API_PATH = "plugins_events_events_by_date/find"
 def fetch_events() -> list[dict]:
     api_payloads = []
 
+    chromium_path = prepare_chromium()
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=prepare_chromium(), args=LAUNCH_ARGS)
+        browser = p.chromium.launch(executable_path=chromium_path, args=LAUNCH_ARGS)
         page = browser.new_page()
 
         def handle_response(response):

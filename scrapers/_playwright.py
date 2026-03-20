@@ -71,16 +71,25 @@ def prepare_chromium() -> str:
     al2023 = f"{LAYER_BIN}/al2023.tar.br"
     if os.path.isfile(al2023):
         print(f"[playwright] Extracting AL2023 libs from {al2023}")
-        _extract_tar_br(al2023, "/tmp")
+        with open(al2023, "rb") as f:
+            tar_bytes = brotli.decompress(f.read())
+        with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
+            members = tar.getnames()
+            print(f"[playwright] al2023.tar.br contents ({len(members)} files): {members[:10]}")
+            tar.extractall("/tmp")
+        print(f"[playwright] /tmp contents after AL2023 extract: {os.listdir('/tmp')}")
+    else:
+        print(f"[playwright] WARNING: {al2023} not found")
 
     # 3. Extract SwiftShader (software GPU fallback)
     swiftshader = f"{LAYER_BIN}/swiftshader.tar.br"
     if os.path.isfile(swiftshader):
         print(f"[playwright] Extracting SwiftShader from {swiftshader}")
         _extract_tar_br(swiftshader, "/tmp")
+    else:
+        print(f"[playwright] WARNING: {swiftshader} not found")
 
     # 4. Set LD_LIBRARY_PATH so Chromium can find the extracted shared libraries.
-    #    Sparticuz libs may land in /tmp directly or in /tmp/lib depending on tar structure.
     lib_dirs = [d for d in ("/tmp", "/tmp/lib") if os.path.isdir(d)]
     existing = os.environ.get("LD_LIBRARY_PATH", "")
     os.environ["LD_LIBRARY_PATH"] = ":".join(lib_dirs) + (":" + existing if existing else "")
