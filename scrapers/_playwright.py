@@ -22,18 +22,11 @@ LAYER_BIN = "/opt/nodejs/node_modules/@sparticuz/chromium/bin"
 _CHROMIUM_PATH = "/tmp/chromium"
 
 LAUNCH_ARGS = [
-    "--headless=new",
     "--no-sandbox",
     "--no-zygote",
-    "--single-process",
+    "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
     "--disable-gpu",
-    "--disable-setuid-sandbox",
-    "--disable-extensions",
-    "--disable-background-networking",
-    "--disable-default-apps",
-    "--disable-sync",
-    "--no-first-run",
     "--use-gl=swiftshader",
 ]
 
