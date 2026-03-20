@@ -21,27 +21,42 @@ import brotli
 LAYER_BIN = "/opt/nodejs/node_modules/@sparticuz/chromium/bin"
 _CHROMIUM_PATH = "/tmp/chromium"
 
+# Matches sparticuz/chromium default args exactly (no --disable-gpu, no --no-zygote).
+# https://github.com/Sparticuz/chromium
 LAUNCH_ARGS = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
-    "--disable-gpu",
     "--use-gl=angle",
     "--use-angle=swiftshader",
-    "--disable-extensions",
-    "--disable-background-networking",
-    "--disable-default-apps",
+    "--allow-running-insecure-content",
+    "--autoplay-policy=user-gesture-required",
+    "--disable-component-update",
+    "--disable-domain-reliability",
     "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process",
+    "--disable-features=Translate,BackForwardCache,AvoidUnnecessaryBeforeUnloadCheckPost",
+    "--disable-print-preview",
     "--disable-site-isolation-trials",
-    "--disable-renderer-backgrounding",
+    "--disable-speech-api",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
     "--disable-breakpad",
+    "--disable-client-side-phishing-detection",
+    "--disable-component-extensions-with-background-pages",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--disable-hang-monitor",
+    "--disable-ipc-flooding-protection",
+    "--disable-popup-blocking",
+    "--disable-prompt-on-repost",
+    "--disable-renderer-backgrounding",
     "--disable-sync",
-    "--no-first-run",
-    "--mute-audio",
     "--force-color-profile=srgb",
     "--metrics-recording-only",
+    "--no-first-run",
     "--password-store=basic",
     "--use-mock-keychain",
+    "--export-tagged-pdf",
 ]
 
 
