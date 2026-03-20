@@ -33,7 +33,7 @@ def _find_date(container) -> str:
     for cls in ("event-date", "date", "dates", "event-dates"):
         el = container.find(class_=cls)
         if el:
-            return el.get_text(strip=True)
+            return " ".join(el.get_text(separator=" ").split())
     m = DATE_RE.search(container.get_text(separator=" "))
     return m.group(0).strip() if m else ""
 
@@ -47,18 +47,17 @@ def _parse_page(html: str, events: list, seen: set) -> int:
     soup = BeautifulSoup(html, "html.parser")
     added = 0
     for h3 in soup.find_all("h3"):
-        # AJAX response: <a href="/events/detail/..."><h3>title</h3></a>
-        a = h3.parent if h3.parent and h3.parent.name == "a" else None
-        if a is None or "/events/detail/" not in (a.get("href") or ""):
+        a = h3.find("a", href=lambda h: h and "/events/detail/" in h)
+        if not a:
             continue
-        title = h3.get_text(strip=True)
+        title = a.get_text(strip=True)
         if not title or title in seen:
             continue
         seen.add(title)
         link = a.get("href", "")
         if link and not link.startswith("http"):
             link = BASE_URL + link
-        date_str = _find_date(a.parent) if a.parent else ""
+        date_str = _find_date(h3.parent) if h3.parent else ""
         events.append({"title": title, "date": date_str, "description": "", "link": link})
         added += 1
     return added
@@ -73,7 +72,9 @@ def fetch_events() -> list[dict]:
         url = AJAX_URL.format(offset=offset, per_page=PER_PAGE)
         response = requests.get(url, headers=HEADERS, timeout=30)
         response.raise_for_status()
-        added = _parse_page(response.text, events, seen)
+        # Response is a JSON-encoded HTML string, not raw HTML
+        html = response.json() if response.text.strip().startswith('"') else response.text
+        added = _parse_page(html, events, seen)
         print(f"[dallas_cc] offset={offset} → {added} events")
         if added == 0:
             break
