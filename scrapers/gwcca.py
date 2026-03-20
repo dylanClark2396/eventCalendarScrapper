@@ -21,6 +21,13 @@ def fetch_events() -> list[dict]:
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path=chromium_path, headless=False, args=LAUNCH_ARGS)
         page = browser.new_page()
+        # Block heavy resources to reduce renderer memory/crash risk
+        page.route(
+            "**/*.{png,jpg,jpeg,gif,svg,webp,ico,woff,woff2,ttf,mp4,mp3}",
+            lambda route: route.abort(),
+        )
+        page.route("**/*.css", lambda route: route.abort())
+
         page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
         # Give Vue time to render after initial load
         page.wait_for_timeout(8000)

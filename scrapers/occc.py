@@ -31,8 +31,15 @@ def fetch_events() -> list[dict]:
                 except Exception:
                     pass
 
+        # Block heavy resources — we only need the JS API calls to fire, not full rendering
+        page.route(
+            "**/*.{png,jpg,jpeg,gif,svg,webp,ico,woff,woff2,ttf,mp4,mp3}",
+            lambda route: route.abort(),
+        )
+        page.route("**/*.css", lambda route: route.abort())
+
         page.on("response", handle_response)
-        page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
+        page.goto(CALENDAR_URL, wait_until="domcontentloaded", timeout=60000)
         # Wait for Ungerboeck API calls to complete after initial load
         page.wait_for_timeout(10000)
         browser.close()
