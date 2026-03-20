@@ -155,15 +155,35 @@ def prepare_chromium() -> str:
     os.environ["LD_LIBRARY_PATH"] = ":".join(lib_dirs) + (":" + existing if existing else "")
     print(f"[playwright] LD_LIBRARY_PATH={os.environ['LD_LIBRARY_PATH']}")
 
-    # 7. Smoke-test the binary so we can see its crash output before Playwright tries.
+    # 7. Smoke-test: run --version, then a real headless session to surface crash details.
     try:
         result = subprocess.run(
             [_CHROMIUM_PATH, "--version", "--no-sandbox"],
             capture_output=True, text=True, timeout=10, env=os.environ,
         )
-        print(f"[playwright] Chromium --version: rc={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr[:400]!r}")
+        print(f"[playwright] Chromium --version: rc={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr[:200]!r}")
     except Exception as e:
         print(f"[playwright] Chromium --version failed: {e}")
+
+    try:
+        import playwright as _pw_module
+        print(f"[playwright] Playwright package version: {_pw_module.__version__}")
+    except Exception:
+        pass
+
+    try:
+        result = subprocess.run(
+            [_CHROMIUM_PATH,
+             "--headless", "--no-sandbox", "--disable-setuid-sandbox",
+             "--disable-dev-shm-usage", "--use-gl=angle", "--use-angle=swiftshader",
+             "--screenshot=/tmp/chromium_test.png", "data:text/html,<h1>ok</h1>"],
+            capture_output=True, text=True, timeout=30, env=os.environ,
+        )
+        print(f"[playwright] headless test: rc={result.returncode} screenshot={os.path.isfile('/tmp/chromium_test.png')}")
+        if result.stderr:
+            print(f"[playwright] headless stderr: {result.stderr[:600]!r}")
+    except Exception as e:
+        print(f"[playwright] headless test failed: {e}")
 
     print(f"[playwright] Chromium ready at {_CHROMIUM_PATH}")
     return _CHROMIUM_PATH
