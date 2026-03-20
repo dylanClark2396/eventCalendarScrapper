@@ -79,5 +79,12 @@ def prepare_chromium() -> str:
         print(f"[playwright] Extracting SwiftShader from {swiftshader}")
         _extract_tar_br(swiftshader, "/tmp")
 
+    # 4. Set LD_LIBRARY_PATH so Chromium can find the extracted shared libraries.
+    #    Sparticuz libs may land in /tmp directly or in /tmp/lib depending on tar structure.
+    lib_dirs = [d for d in ("/tmp", "/tmp/lib") if os.path.isdir(d)]
+    existing = os.environ.get("LD_LIBRARY_PATH", "")
+    os.environ["LD_LIBRARY_PATH"] = ":".join(lib_dirs) + (":" + existing if existing else "")
+    print(f"[playwright] LD_LIBRARY_PATH={os.environ['LD_LIBRARY_PATH']}")
+
     print(f"[playwright] Chromium ready at {_CHROMIUM_PATH}")
     return _CHROMIUM_PATH
