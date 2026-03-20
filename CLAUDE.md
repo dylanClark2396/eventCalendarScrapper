@@ -59,10 +59,10 @@ Valid `calendar_id` values: `javits`, `gicc`, `gwcca`, `signature_boston`, `dall
 ## Scrapers
 
 ### Headless Scrapers (Playwright)
-Three scrapers use Playwright with a Chromium Lambda Layer because their sites are JS-rendered:
-- **GWCCA** (`gwcca.org/event-calendar`) — Vue.js rendered, direct site
-- **OCCC** (`events.occc.net`) — Vue.js + Ungerboeck, intercepts REST API response
-- **Vegas** (`vegasmeansbusiness.com/destination-calendar`) — Simpleview widget, intercepts API response
+Three scrapers use Playwright with a Chromium Lambda Layer because their sites are JS-rendered or block direct requests from AWS IPs:
+- **GWCCA** (`gwcca.org/event-calendar`) — Vue.js SSR; site blocks non-browser fetches (403). Captures `page.content()` for HTML parsing.
+- **OCCC** (`events.occc.net`) — Vue.js + Ungerboeck; intercepts REST API response. Token is runtime-computed, direct API returns 403.
+- **Vegas** (`vegasmeansbusiness.com/destination-calendar`) — Simpleview widget; intercepts API response. Direct API confirmed working from browser but **times out from Lambda** (AWS IPs blocked).
 
 The Chromium binary comes from the `sparticuz/chromium` Lambda Layer. Worker Lambda is **2048MB / 300s timeout** (Chromium needs ~700MB just to start).
 
@@ -107,12 +107,17 @@ browser = p.chromium.launch(executable_path=chromium_path, headless=False, args=
 page.route("**/*.{png,jpg,jpeg,gif,svg,webp,ico,woff,woff2,ttf,mp4,mp3}", lambda r: r.abort())
 page.route("**/*.css", lambda r: r.abort())
 ```
-Use on OCCC (keeps it from crashing). Do NOT use on Vegas (causes crashes there).
+Use on OCCC and GWCCA. Do NOT use on Vegas (causes crashes there).
+
+**Per-scraper wait strategy:**
+- **OCCC**: `wait_until="domcontentloaded"` + resource blocking + try/except. The widget's API call fires before the renderer crash; domcontentloaded fires early enough to catch it.
+- **GWCCA**: `wait_until="domcontentloaded"` + resource blocking. Captures `page.content()` immediately after goto (before Vue hydration can crash the renderer), then parses SSR HTML via JSON-LD → embedded window state → DOM heuristics. API interception is also attempted but has returned 0 results (likely pure SSR, no XHR).
+- **Vegas**: `wait_until="load"` + NO resource blocking + 8s wait + 5 scroll iterations + try/except. Direct API calls **time out from Lambda** (AWS egress IPs are blocked by the site) — do not attempt direct `requests` calls for Vegas.
 
 **Layer setup:** sparticuz/chromium layer is a Node.js npm package at `/opt/nodejs/node_modules/@sparticuz/chromium/bin/`. The `prepare_chromium()` function in `scrapers/_playwright.py` handles decompression of `chromium.br`, `al2023.tar.br` (NSS/NSPR libs → `/tmp/lib/`), `swiftshader.tar.br` (→ `/tmp/`), and `fonts.tar.br`. It also sets `HOME=/tmp`, `VK_ICD_FILENAMES=/tmp/vk_swiftshader_icd.json`, and `LD_LIBRARY_PATH`.
 
 #### Selector Maintenance
-GWCCA and OCCC use API response interception (more stable). Vegas uses API interception with scroll pagination to load beyond the initial 12-event window. If GWCCA's intercepted API changes, check the `[gwcca] API response:` CloudWatch logs for the current endpoint structure.
+OCCC uses API response interception (intercepts `plugins_events_events_by_date/find`). Vegas uses API interception with scroll pagination. GWCCA uses `page.content()` HTML parsing — if 0 events are returned, CloudWatch logs will dump the first 2000 chars of page HTML; use that to identify the current element structure.
 
 ### Other Scrapers
 

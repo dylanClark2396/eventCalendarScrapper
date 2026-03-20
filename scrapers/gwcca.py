@@ -130,7 +130,17 @@ def fetch_events() -> list[dict]:
     chromium_path = prepare_chromium()
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path=chromium_path, headless=False, args=LAUNCH_ARGS)
-        page = browser.new_page()
+        ctx = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            )
+        )
+        page = ctx.new_page()
+
+        # Hide webdriver flag — Cloudflare checks navigator.webdriver
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
         # Block heavy assets to reduce renderer crash risk
         page.route(
@@ -151,8 +161,25 @@ def fetch_events() -> list[dict]:
 
         page.on("response", handle_response)
         try:
-            page.goto(CALENDAR_URL, wait_until="domcontentloaded", timeout=60000)
-            # Grab the SSR HTML immediately before Vue hydration can crash the renderer
+            page.goto(CALENDAR_URL, wait_until="domcontentloaded", timeout=90000)
+
+            # Cloudflare managed challenge serves "Just a moment..." — detect and wait for redirect
+            title = page.title()
+            print(f"[gwcca] Page title after initial load: {title!r}")
+            if "just a moment" in title.lower() or "challenge" in title.lower():
+                print("[gwcca] Cloudflare challenge detected — waiting for auto-solve and redirect...")
+                try:
+                    page.wait_for_function(
+                        "document.title.toLowerCase().indexOf('just a moment') === -1 && document.title !== ''",
+                        timeout=45000,
+                        polling=1000,
+                    )
+                    page.wait_for_load_state("domcontentloaded", timeout=30000)
+                    print(f"[gwcca] Challenge passed — new title: {page.title()!r}")
+                except Exception as e:
+                    print(f"[gwcca] Challenge wait timed out: {e}")
+
+            # Grab the SSR HTML before Vue hydration can crash the renderer
             page_html = page.content()
             print(f"[gwcca] Got page HTML ({len(page_html)} bytes), waiting for API calls...")
             page.wait_for_timeout(8000)
@@ -163,6 +190,7 @@ def fetch_events() -> list[dict]:
                     page_html = page.content()
                 except Exception:
                     pass
+        ctx.close()
         browser.close()
 
     # Try API payloads first (more structured)
