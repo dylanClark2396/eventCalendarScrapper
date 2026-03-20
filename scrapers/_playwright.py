@@ -28,6 +28,11 @@ LAUNCH_ARGS = [
     "--disable-dev-shm-usage",
     "--disable-gpu",
     "--use-gl=swiftshader",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-default-apps",
+    "--no-first-run",
+    "--mute-audio",
 ]
 
 

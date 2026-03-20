@@ -128,8 +128,8 @@ Resources:
       Code:
         S3Bucket: !Ref DeployBucket
         S3Key: scraper.zip
-      Timeout: 180
-      MemorySize: 1024
+      Timeout: 300
+      MemorySize: 2048
       Layers:
         - !Ref PlaywrightLayerArn
       Environment:
