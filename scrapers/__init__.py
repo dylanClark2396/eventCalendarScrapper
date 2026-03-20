@@ -22,14 +22,12 @@ from scrapers import (
 ALL = [
     dallas_cc,
     gicc,
-    gwcca,
     javits,
     lacc,
     miami_beach_cc,
     nashville_mcc,
-    occc,
     phoenix_cc,
     san_diego_cc,
     signature_boston,
-    vegas_lvcva,
+    # gwcca, occc, vegas_lvcva disabled — Chromium/Playwright does not work reliably on Lambda
 ]
