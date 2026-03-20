@@ -64,7 +64,7 @@ Three scrapers use Playwright with a Chromium Lambda Layer because their sites a
 - **OCCC** (`events.occc.net`) — Vue.js + Ungerboeck, intercepts REST API response
 - **Vegas** (`vegasmeansbusiness.com/destination-calendar`) — Simpleview widget, intercepts API response
 
-The Chromium binary comes from the `sparticuz/chromium` Lambda Layer. Worker Lambda is 1024MB / 180s timeout.
+The Chromium binary comes from the `sparticuz/chromium` Lambda Layer. Worker Lambda is **2048MB / 300s timeout** (Chromium needs ~700MB just to start).
 
 #### Setting Up the Playwright Lambda Layer
 1. Go to https://github.com/Sparticuz/chromium/releases
@@ -74,8 +74,45 @@ The Chromium binary comes from the `sparticuz/chromium` Lambda Layer. Worker Lam
 5. Add it as a GitHub Actions secret: `PLAYWRIGHT_LAYER_ARN`
 6. Redeploy bootstrap stack (added `lambda:GetLayerVersion` permission), then push to main
 
+#### Chromium on Lambda — Key Findings
+
+Lambda's seccomp policy blocks Linux namespace/credential syscalls. The fix requires a specific set of flags — do not change these without good reason:
+
+```python
+LAUNCH_ARGS = [
+    "--headless=old",      # old headless = no GPU compositing needed
+    "--no-sandbox",
+    "--no-zygote",         # skip zygote; it calls credentials.cc which Lambda blocks
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",       # no GPU subprocess; combined with headless=old this works
+    ...
+]
+# IMPORTANT: launch with headless=False so Playwright doesn't prepend --headless (new mode)
+browser = p.chromium.launch(executable_path=chromium_path, headless=False, args=LAUNCH_ARGS)
+```
+
+**Flags that BREAK things on Lambda (do not add):**
+- `--single-process` — unstable in Chromium 110+, causes TargetClosedError
+- `--use-gl=angle --use-angle=swiftshader` — requires GPU process which Lambda blocks
+- `--disable-gpu` alone with `--use-gl=angle` — GPU process disabled but ANGLE still needs it
+
+**Root crash causes we diagnosed:**
+1. `FATAL:credentials.cc: Check failed: Operation not permitted` → zygote trying to set up GPU process sandbox; fixed by `--no-zygote --disable-gpu`
+2. `TargetClosedError: Browser.new_page` → browser exits immediately; caused by conflicting flags (e.g. `--disable-gpu` + `--use-gl=angle`)
+3. `Page crashed` during Vue.js rendering → renderer subprocess hits same seccomp restrictions; fix is resource blocking (`page.route`) and/or switching to API interception instead of DOM scraping
+
+**Resource blocking** (reduces renderer crash risk on heavy JS pages):
+```python
+page.route("**/*.{png,jpg,jpeg,gif,svg,webp,ico,woff,woff2,ttf,mp4,mp3}", lambda r: r.abort())
+page.route("**/*.css", lambda r: r.abort())
+```
+Use on OCCC (keeps it from crashing). Do NOT use on Vegas (causes crashes there).
+
+**Layer setup:** sparticuz/chromium layer is a Node.js npm package at `/opt/nodejs/node_modules/@sparticuz/chromium/bin/`. The `prepare_chromium()` function in `scrapers/_playwright.py` handles decompression of `chromium.br`, `al2023.tar.br` (NSS/NSPR libs → `/tmp/lib/`), `swiftshader.tar.br` (→ `/tmp/`), and `fonts.tar.br`. It also sets `HOME=/tmp`, `VK_ICD_FILENAMES=/tmp/vk_swiftshader_icd.json`, and `LD_LIBRARY_PATH`.
+
 #### Selector Maintenance
-GWCCA's scraper uses CSS selectors against the rendered DOM — if the site redesigns, selectors in `scrapers/gwcca.py` may need updating. OCCC and Vegas use API response interception which is more stable.
+GWCCA and OCCC use API response interception (more stable). Vegas uses API interception with scroll pagination to load beyond the initial 12-event window. If GWCCA's intercepted API changes, check the `[gwcca] API response:` CloudWatch logs for the current endpoint structure.
 
 ### Other Scrapers
 
