@@ -34,7 +34,9 @@ def fetch_events() -> list[dict]:
                     pass
 
         page.on("response", handle_response)
-        page.goto(CALENDAR_URL, wait_until="networkidle", timeout=60000)
+        page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
+        # Wait for Simpleview JS to finish loading calendar data after initial load
+        page.wait_for_timeout(15000)
         browser.close()
 
     # Log intercepted URLs to help with debugging if needed

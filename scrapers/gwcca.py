@@ -21,10 +21,12 @@ def fetch_events() -> list[dict]:
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path=chromium_path, args=LAUNCH_ARGS)
         page = browser.new_page()
-        page.goto(CALENDAR_URL, wait_until="networkidle", timeout=60000)
+        page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
+        # Give Vue time to render after initial load
+        page.wait_for_timeout(8000)
 
         # Wait for event cards to appear after Vue renders
-        page.wait_for_selector(".event-listing, .event-card, .event-item, article", timeout=30000)
+        page.wait_for_selector(".event-listing, .event-card, .event-item, article", timeout=20000)
 
         cards = (
             page.query_selector_all(".event-listing")
