@@ -101,6 +101,26 @@ def prepare_chromium() -> str:
     else:
         print(f"[playwright] WARNING: {swiftshader} not found")
 
+    # 3a. Point Vulkan loader at the SwiftShader ICD and fix library path if needed.
+    icd_path = "/tmp/vk_swiftshader_icd.json"
+    if os.path.isfile(icd_path):
+        import json as _json
+        with open(icd_path) as f:
+            icd = _json.load(f)
+        print(f"[playwright] vk_swiftshader_icd.json: {icd}")
+        # The ICD may reference a path that no longer exists after extraction;
+        # rewrite it to point at the extracted library in /tmp.
+        lib_path = icd.get("ICD", {}).get("library_path", "")
+        if lib_path and not os.path.isfile(lib_path):
+            icd["ICD"]["library_path"] = "/tmp/libvk_swiftshader.so"
+            with open(icd_path, "w") as f:
+                _json.dump(icd, f)
+            print(f"[playwright] Patched ICD library_path → /tmp/libvk_swiftshader.so")
+        os.environ["VK_ICD_FILENAMES"] = icd_path
+        print(f"[playwright] VK_ICD_FILENAMES={icd_path}")
+    else:
+        print(f"[playwright] WARNING: {icd_path} not found")
+
     # 4. Extract fonts (needed for renderer stability)
     fonts = f"{LAYER_BIN}/fonts.tar.br"
     if os.path.isfile(fonts):
