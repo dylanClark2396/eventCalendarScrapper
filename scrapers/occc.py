@@ -2,6 +2,8 @@
 Scraper for Orange County Convention Center event calendar.
 https://events.occc.net/
 Vue.js + Ungerboeck rendered — uses Playwright to intercept the REST API response.
+Uses domcontentloaded (not load) to avoid renderer crash while still capturing
+the widget's initial API call. Error is caught so any captured payloads are kept.
 """
 
 import json
@@ -39,9 +41,13 @@ def fetch_events() -> list[dict]:
         page.route("**/*.css", lambda route: route.abort())
 
         page.on("response", handle_response)
-        page.goto(CALENDAR_URL, wait_until="load", timeout=60000)
-        # Wait for Ungerboeck API calls to complete after initial load
-        page.wait_for_timeout(10000)
+        try:
+            # domcontentloaded fires before heavy JS runs — avoids renderer crash
+            # while still allowing the widget's initial API call to be intercepted
+            page.goto(CALENDAR_URL, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(12000)
+        except Exception as e:
+            print(f"[occc] page.goto/wait error (may be post-API crash): {e}")
         browser.close()
 
     events = []
