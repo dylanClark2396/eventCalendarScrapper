@@ -44,11 +44,14 @@ def fetch_month(year: int, month: int) -> list[dict]:
         venue_el = li.find("li", class_="info__location")
         venue = venue_el.get_text(strip=True) if venue_el else ""
 
+        a = h4.find("a")
+        link = a.get("href", "") if a else ""
+
         events.append({
             "title": title,
             "date": date_str,
             "description": venue,
-            "link": "",
+            "link": link,
         })
 
     return events
